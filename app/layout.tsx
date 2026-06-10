@@ -3,6 +3,7 @@ import { Schibsted_Grotesk, Martian_Mono } from "next/font/google";
 import "./globals.css";
 import LightRays from "@/components/LightRays";
 import Navbar from "@/components/Navbar";
+import Footer from "@/components/Footer";
 
 const schibstedGrotesk = Schibsted_Grotesk({variable: "--font-schibsted-grotesk"})
 
@@ -12,8 +13,9 @@ const martianMono = Martian_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Tech Networking Events",
-  description: "The hub for local tech networking events",
+  title: "DevEvents — Tech, AI & Data Events in the GTA, Ottawa & Quebec",
+  description:
+    "One feed for dev meetups, company events and hackathons across the Greater Toronto Area, Ottawa and Quebec — aggregated from Luma, Eventbrite, Meetup, MLH and company sites.",
 };
 
 export default function RootLayout({
@@ -51,6 +53,8 @@ export default function RootLayout({
         <main>
           {children}
         </main>
+
+        <Footer />
       </body>
     </html>
   );

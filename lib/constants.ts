@@ -1,62 +1,45 @@
-export const events = [
-  {
-    image: '/images/event1.png',
-    title: 'Toronto JavaScript Meetup',
-    slug: 'toronto-javascript-meetup',
-    organizer: 'Toronto.js Community',
-    country: 'Canada',
-    city: 'Toronto',
-    date: 'June 15, 2026',
-    time: '6:00 PM'
-  },
-  {
-    image: '/images/event2.png',
-    title: 'PyData Toronto Conference',
-    slug: 'pydata-toronto-2026',
-    organizer: 'PyData',
-    country: 'Canada',
-    city: 'Toronto',
-    date: 'July 8, 2026',
-    time: '9:00 AM'
-  },
-  {
-    image: '/images/event3.png',
-    title: 'React Toronto Developers Meetup',
-    slug: 'react-toronto-meetup',
-    organizer: 'React Toronto',
-    country: 'Canada',
-    city: 'Toronto',
-    date: 'June 22, 2026',
-    time: '6:30 PM'
-  },
-  {
-    image: '/images/event4.png',
-    title: 'Toronto DevOps & Cloud Meetup',
-    slug: 'toronto-devops-meetup',
-    organizer: 'DevOps Toronto',
-    country: 'Canada',
-    city: 'Toronto',
-    date: 'July 1, 2026',
-    time: '5:30 PM'
-  },
-  {
-    image: '/images/event5.png',
-    title: 'GTA Game Developers Conference',
-    slug: 'gta-gamedev-conf',
-    organizer: 'GTA Gamedev Community',
-    country: 'Canada',
-    city: 'Mississauga',
-    date: 'August 10, 2026',
-    time: '10:00 AM'
-  },
-  {
-    image: '/images/event6.png',
-    title: 'Toronto Web Development Hackathon',
-    slug: 'toronto-web-hackathon',
-    organizer: 'Tech Toronto',
-    country: 'Canada',
-    city: 'Toronto',
-    date: 'July 25-26, 2026',
-    time: '9:00 AM'
-  }
+/** UI constants for filters, labels and chips (live data replaced the old sample events). */
+
+export const CITIES = [
+    'Toronto',
+    'Mississauga',
+    'Markham',
+    'Vaughan',
+    'Brampton',
+    'Waterloo',
+    'Ottawa',
+    'Montreal',
+    'Quebec City',
+    'Online',
 ];
+
+export const CATEGORY_LABELS: Record<string, string> = {
+    hackathon: 'Hackathon',
+    meetup: 'Meetup',
+    conference: 'Conference',
+    networking: 'Networking',
+};
+
+export const SOURCE_LABELS: Record<string, string> = {
+    luma: 'Luma',
+    eventbrite: 'Eventbrite',
+    meetup: 'Meetup',
+    mlh: 'MLH',
+    company: 'Company',
+};
+
+export const MODE_LABELS: Record<string, string> = {
+    offline: 'In person',
+    online: 'Online',
+    hybrid: 'Hybrid',
+};
+
+export const DATE_PRESETS = [
+    { value: '', label: 'Upcoming' },
+    { value: 'today', label: 'Today' },
+    { value: 'week', label: 'This week' },
+    { value: 'month', label: 'This month' },
+];
+
+/** Tags shown on cards exclude the implicit baseline tag. */
+export const HIDDEN_TAGS = ['tech'];
