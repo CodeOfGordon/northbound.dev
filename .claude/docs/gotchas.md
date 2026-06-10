@@ -235,6 +235,13 @@ EventSchema.index(
 - Existing: `slug` unique, compound `{ date: 1, mode: 1 }`. That compound is **backwards** for the dominant "filter by mode, range/sort by date" query — prefer `{ mode: 1, date: 1 }` (ESR rule: Equality, Sort, Range). Add `{ date: 1, _id: 1 }` for the no-filter paginated feed, plus `{ city: 1, date: 1 }` and `{ tags: 1, date: 1 }`.
 - Mongoose auto-builds indexes on model init (`autoIndex`), which can trigger a foreground build on a hot path in prod. Set `autoIndex: process.env.NODE_ENV !== 'production'` in schema options and run `Event.syncIndexes()` on deploy.
 
+### normalizeDate UTC-shift bug (open debt — fix in the scraper milestone)
+`normalizeDate` (both `database/event.model.ts` and `database/normalize.ts`) does
+`new Date(input).toISOString().split('T')[0]` — for ISO inputs with an offset
+(e.g. `2026-07-15T20:00:00-04:00`, an 8 PM Toronto event) the UTC conversion rolls the
+date to the **next day**. Plain dates like `"June 15, 2026"` are unaffected. Fix when
+wiring real fetchers: extract the date in the event's timezone (`America/Toronto`), not UTC.
+
 ### Mongoose 9 breaking changes (verified against installed 9.6.2 types)
 - **Middleware has no `next()` callback.** `pre('save', fn)` receives `(this, opts: SaveOptions)` — typing the param as `next` and calling it is a TS error (`SaveOptions has no call signatures`). Return (or resolve) to continue; **throw** to abort with an error.
 - **`FilterQuery` was renamed `QueryFilter`.** `import type { QueryFilter } from 'mongoose'`.
