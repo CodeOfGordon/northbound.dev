@@ -1,0 +1,55 @@
+# Scheduled scrape: hits POST /api/refresh on the deployed site.
+#
+# Required repo secrets:
+#   SITE_URL    — deployed base URL, e.g. https://devevents.vercel.app (no trailing slash)
+#   CRON_SECRET — same value as the CRON_SECRET env var on the deployment
+#
+# Free sources (luma, mlh, company — public JSON/HTML) run nightly.
+# Paid Apify sources (eventbrite, meetup) run weekly to stay inside the
+# free-tier credit; bump the cadence if the Apify plan grows.
+name: Scrape events
+
+on:
+  schedule:
+    - cron: '15 7 * * *' # nightly ~03:15 ET — free sources
+    - cron: '45 7 * * 0' # Sunday ~03:45 ET — paid Apify sources
+  workflow_dispatch:
+    inputs:
+      sources:
+        description: 'Space-separated sources to scrape (default: all)'
+        required: false
+        default: 'luma mlh company eventbrite meetup'
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Pick sources for this trigger
+        id: pick
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "sources=${{ github.event.inputs.sources }}" >> "$GITHUB_OUTPUT"
+          elif [ "${{ github.event.schedule }}" = "45 7 * * 0" ]; then
+            echo "sources=eventbrite meetup" >> "$GITHUB_OUTPUT"
+          else
+            echo "sources=luma mlh company" >> "$GITHUB_OUTPUT"
+          fi
+
+      # One POST per source: each stays well inside the route's 300 s ceiling
+      # (meetup alone takes ~4 min) and one slow source can't starve the rest.
+      - name: Trigger refresh per source
+        run: |
+          failed=0
+          for source in ${{ steps.pick.outputs.sources }}; do
+            echo "::group::$source"
+            if ! curl --fail-with-body -sS -X POST "${{ secrets.SITE_URL }}/api/refresh" \
+              -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+              -H "Content-Type: application/json" \
+              -d "{\"sources\":[\"$source\"]}" \
+              --max-time 360; then
+              failed=1
+            fi
+            echo
+            echo "::endgroup::"
+          done
+          exit $failed
