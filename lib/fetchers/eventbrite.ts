@@ -15,7 +15,11 @@ export async function fetchEventbrite(): Promise<unknown[]> {
     const results = await Promise.all(
         EVENTBRITE_CITIES.map(async (city) => {
             try {
-                return await runActor(ACTOR, { city, category: EVENTBRITE_CATEGORY, maxItems: perCity });
+                return await runActor(
+                    ACTOR,
+                    { city, category: EVENTBRITE_CATEGORY, maxItems: perCity },
+                    { maxItems: perCity, memoryMb: 1024 }, // run-option maxItems = the real billing cap
+                );
             } catch (e) {
                 console.warn(`eventbrite: city "${city}" skipped — ${(e as Error).message}`);
                 return [];

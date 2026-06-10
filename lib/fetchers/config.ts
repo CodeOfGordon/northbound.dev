@@ -22,9 +22,14 @@ export const EVENTBRITE_CITIES = [
 ];
 export const EVENTBRITE_CATEGORY = 'science-and-tech';
 
-/** Meetup event-search URLs — all fed to a single actor run (it charges per start). */
+/**
+ * Meetup event-search URLs — all fed to a single actor run (it charges per start).
+ * The actor crawls URLs sequentially at ~1 min each and the refresh route has a
+ * 300 s ceiling in production — keep this list to ~4 URLs. 'tech' is the broadest
+ * umbrella search; the relevance gate + tag derivation handle classification.
+ */
 const MEETUP_LOCATIONS = ['ca--on--Toronto', 'ca--on--Ottawa', 'ca--qc--Montréal', 'ca--qc--Québec'];
-const MEETUP_KEYWORDS = ['ai', 'tech', 'data'];
+const MEETUP_KEYWORDS = ['tech'];
 export const MEETUP_SEARCH_URLS = MEETUP_LOCATIONS.flatMap((location) =>
     MEETUP_KEYWORDS.map(
         (keywords) =>

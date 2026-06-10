@@ -14,9 +14,27 @@ function headers(): Record<string, string> {
     return { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' };
 }
 
-export async function runActor(actor: string, input: unknown, timeoutMs = 240_000): Promise<unknown[]> {
+export interface RunOptions {
+    timeoutMs?: number;
+    /**
+     * HARD billing cap on dataset items (the ?maxItems= run option). An actor's
+     * `maxItems` INPUT field is advisory only — the meetup actor ignored it and
+     * billed 10× the requested count. Always set this for pay-per-result actors.
+     */
+    maxItems?: number;
+    /** Pay-per-event actors charge one start fee PER GB of memory — keep this low. */
+    memoryMb?: number;
+}
+
+export async function runActor(actor: string, input: unknown, opts: RunOptions = {}): Promise<unknown[]> {
+    const { timeoutMs = 240_000, maxItems, memoryMb } = opts;
     const h = headers();
-    const started = await fetch(`${BASE}/acts/${actor.replace('/', '~')}/runs?waitForFinish=60`, {
+    // Server-side run timeout mirrors our poll deadline — an abandoned poll must not
+    // leave the actor running (and billing) on Apify
+    const params = new URLSearchParams({ waitForFinish: '60', timeout: String(Math.ceil(timeoutMs / 1000) + 30) });
+    if (maxItems) params.set('maxItems', String(maxItems));
+    if (memoryMb) params.set('memory', String(memoryMb));
+    const started = await fetch(`${BASE}/acts/${actor.replace('/', '~')}/runs?${params}`, {
         method: 'POST',
         headers: h,
         body: JSON.stringify(input),

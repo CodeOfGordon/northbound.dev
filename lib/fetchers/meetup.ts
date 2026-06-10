@@ -11,7 +11,13 @@ const ACTOR = 'easyapi/meetup-events-scraper';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 export async function fetchMeetup(): Promise<unknown[]> {
-    const items = await runActor(ACTOR, { searchUrls: MEETUP_SEARCH_URLS, maxItems: MAX_ITEMS });
+    // run-option maxItems is the real billing cap (the input field is advisory);
+    // 2 GB memory (peak observed ~1.3 GB) halves the per-GB start fee vs the 4 GB default
+    const items = await runActor(
+        ACTOR,
+        { searchUrls: MEETUP_SEARCH_URLS, maxItems: MAX_ITEMS },
+        { maxItems: MAX_ITEMS, memoryMb: 2048, timeoutMs: 280_000 },
+    );
 
     const seen = new Set<string>();
     return items.filter((item: any) => {
