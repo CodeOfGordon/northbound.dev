@@ -44,15 +44,22 @@ export async function runScrape({ sources }: { sources?: string[] } = {}): Promi
             const ops = raw.flatMap((item) => {
                 try {
                     const doc = normalizeRawEvent(item, source);
+                    // North-America scope: drop events positively classified outside
+                    // Canada/US (region 'INTL'). Online + unknown-location events are
+                    // kept — joinable from anywhere / not confirmed foreign.
+                    if (doc.region === 'INTL') return [];
                     const fingerprint = buildFingerprint(doc);
                     return [{
                         updateOne: {
                             filter: { fingerprint },
                             // Pre-save hooks don't run on bulkWrite — doc is already
-                            // normalized and slug is derived here
+                            // normalized and slug is derived here. Slug includes the
+                            // date: recurring series (Reactor, Figma webinars) reuse
+                            // titles across dates, and a bare title slug would hit the
+                            // unique index and silently drop every later occurrence.
                             update: {
                                 $set: doc,
-                                $setOnInsert: { fingerprint, slug: generateSlug(doc.title) },
+                                $setOnInsert: { fingerprint, slug: generateSlug(`${doc.title} ${doc.date}`) },
                             },
                             upsert: true,
                         },

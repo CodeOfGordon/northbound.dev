@@ -38,6 +38,16 @@ export async function GET(request: NextRequest) {
         filter.source = source as IEvent['source'];
     }
 
+    // organizer — case-insensitive exact match (company chips link here)
+    const organizer = sp.get('organizer');
+    if (organizer) filter.organizer = { $regex: `^${escapeRegex(organizer)}$`, $options: 'i' };
+
+    // region — North-America scope shortcut (maps to the derived region field)
+    const region = sp.get('region');
+    if (region === 'canada') filter.region = 'CA';
+    else if (region === 'us') filter.region = 'US';
+    else if (region === 'online') filter.region = 'ONLINE';
+
     const tags = sp.getAll('tag').filter(Boolean);
     if (tags.length) filter.tags = { $in: tags };
 

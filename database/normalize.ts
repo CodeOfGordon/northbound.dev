@@ -2,6 +2,7 @@ import type { Document } from 'mongoose';
 import type { IEvent } from '@/database';
 import { deriveTags } from '@/lib/fetchers/relevance';
 import { stripHtml } from '@/lib/fetchers/util';
+import { classifyRegion, cleanTitle } from '@/lib/fetchers/geo';
 
 type Source = 'luma' | 'eventbrite' | 'meetup' | 'mlh' | 'company';
 
@@ -136,12 +137,67 @@ function mapLumaEvent(raw: any, source: Source, organizerOverride?: string): Can
 }
 
 /**
- * Map a source-specific raw object to the canonical Event shape.
- * Field mappings below were verified against live fetches / actor test runs
- * (2026-06-10). Does NOT compute slug/fingerprint — those are derived at upsert
- * time, because bulkWrite/updateOne skip the pre-save hooks.
+ * Bespoke company-platform adapters (lib/fetchers/companies/) all emit the shared
+ * CompanyStdEvent shape, so one mapper covers every platform. Sources are either
+ * instant-based (startISO + IANA timezone) or date-only (date/endDate parts, no
+ * times — default 09:00 satisfies the schema without inventing precision).
+ */
+function mapStdCompanyEvent(raw: any): CanonicalEvent {
+    const tz = raw.timezone ?? DEFAULT_TZ;
+    const online = raw.mode ? raw.mode === 'online' : !!raw.online;
+    const city = canonicalCity(raw.city ?? (online ? 'Online' : 'TBA'));
+    const organizer = raw._company ?? 'Company';
+    const title = stripHtml(String(raw.title)).slice(0, 100);
+    const description = stripHtml(raw.description ?? '');
+    return {
+        title,
+        description: (description || fallbackDescription(title, city, organizer)).slice(0, 1000),
+        image: raw.image ?? '',
+        venue: raw.venue ?? (online ? 'Online' : 'TBA'),
+        country: raw.country ?? (online ? 'Online' : 'TBA'),
+        city,
+        date: raw.date ?? normalizeDate(raw.startISO, tz),
+        time: raw.time ?? (raw.startISO ? normalizeTime(raw.startISO, tz) : '09:00'),
+        endDate: raw.endDate ?? (raw.endISO ? normalizeDate(raw.endISO, tz) : undefined),
+        endTime: raw.endTime ?? (raw.endISO ? normalizeTime(raw.endISO, tz) : undefined),
+        timezone: tz,
+        mode: raw.mode ?? (online ? 'online' : 'offline'),
+        organizer,
+        tags: deriveTags(`${title} ${organizer} ${description.slice(0, 200)}`),
+        url: raw.url,
+        source: 'company',
+        sourceId: raw.id != null ? `${raw._provider}:${raw.id}` : undefined,
+        isFree: raw.isFree,
+        price: raw.price,
+        category: raw.category ?? mapCategory(title),
+    };
+}
+
+/**
+ * Map a source-specific raw object to the canonical Event shape, then apply
+ * cross-source post-processing: title cleanup and geo classification (canonical
+ * country + North-America region). Does NOT compute slug/fingerprint — those are
+ * derived at upsert time, because bulkWrite/updateOne skip the pre-save hooks.
  */
 export function normalizeRawEvent(raw: any, source: Source): CanonicalEvent {
+    const doc = mapRaw(raw, source);
+    doc.title = cleanTitle(doc.title);
+    const geo = classifyRegion({
+        city: doc.city,
+        country: doc.country,
+        venue: doc.venue,
+        online: doc.mode === 'online',
+        regions: raw?._regions,
+    });
+    doc.country = geo.country;
+    // Non-NA (incl. online events whose region hints exclude North America) collapse
+    // to INTL so the scrape gate drops them — keeps the feed North-America focused.
+    doc.region = geo.isNorthAmerica ? geo.region : 'INTL';
+    return doc;
+}
+
+/** Field mappings verified against live fetches / actor test runs (2026-06-10). */
+function mapRaw(raw: any, source: Source): CanonicalEvent {
     switch (source) {
         case 'luma':
             return mapLumaEvent(raw, source);
@@ -234,6 +290,7 @@ export function normalizeRawEvent(raw: any, source: Source): CanonicalEvent {
         }
 
         case 'company': {
+            if (raw._std) return mapStdCompanyEvent(raw);
             if (raw._provider === 'luma') return mapLumaEvent(raw, source, raw._company);
 
             // WordPress "The Events Calendar" REST item: start_date is already local;

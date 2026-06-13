@@ -4,7 +4,7 @@ import Link from 'next/link';
 import posthog from 'posthog-js';
 import { Building2, Clock, MapPin, Ticket } from 'lucide-react';
 import EventImage from '@/components/EventImage';
-import { CATEGORY_LABELS, HIDDEN_TAGS, SOURCE_LABELS } from '@/lib/constants';
+import { CATEGORY_LABELS, COUNTRY_FLAG, HIDDEN_TAGS, SOURCE_LABELS } from '@/lib/constants';
 import { dateBadge, formatDateRange, formatTime } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import type { EventDoc } from '@/lib/events';
@@ -18,8 +18,9 @@ interface Props {
  * read differently from community meetups at a glance.
  */
 const EventCard = ({ event }: Props) => {
-    const { title, slug, image, organizer, city, date, endDate, time, mode, source, category, isFree } = event;
+    const { title, slug, image, organizer, city, country, date, endDate, time, mode, source, category, isFree } = event;
     const isCompany = source === 'company';
+    const flag = COUNTRY_FLAG[country] ?? '';
     const badge = dateBadge(date);
     const visibleTags = event.tags.filter((t) => !HIDDEN_TAGS.includes(t)).slice(0, 2);
 
@@ -62,6 +63,7 @@ const EventCard = ({ event }: Props) => {
                     </span>
                     <span className="flex items-center gap-2">
                         <MapPin className="size-3.5 shrink-0" aria-hidden />
+                        {flag && <span aria-hidden>{flag}</span>}
                         {mode === 'online' ? 'Online' : city}
                     </span>
                     <span className="flex items-center gap-2">

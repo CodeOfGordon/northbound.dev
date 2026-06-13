@@ -1,10 +1,11 @@
 import Link from 'next/link';
 import Image from 'next/image';
 
+// Order mirrors the site hierarchy: companies first, hackathons, then everything
 const LINKS = [
-    { href: '/events', label: 'All events' },
-    { href: '/events?category=hackathon', label: 'Hackathons' },
     { href: '/events?source=company', label: 'Companies' },
+    { href: '/events?category=hackathon', label: 'Hackathons' },
+    { href: '/events', label: 'All events' },
 ];
 
 const Navbar = () => (

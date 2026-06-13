@@ -1,9 +1,11 @@
 # DevEvents
 
-One feed for **tech / AI / data dev & networking events and hackathons** across the
-Greater Toronto Area, Ottawa, Montreal and Quebec City — auto-scraped from Luma,
-Eventbrite, Meetup, MLH and company sites, deduplicated, and exportable to
-Google / Outlook / Apple Calendar (+ iCal).
+One feed of **official dev events from big tech & AI companies** (Google, AWS,
+Microsoft Reactor, NVIDIA, Y Combinator, Tesla, Databricks, Snowflake, Figma, plus
+Luma calendars for DeepMind, Modal, Cursor, LangChain, Cloudflare, Cohere and more) —
+alongside **hackathons** (MLH, NVIDIA) and **community tech events** across the
+Greater Toronto Area, Ottawa, Montreal and Quebec City. Auto-scraped, deduplicated,
+and exportable to Google / Outlook / Apple Calendar (+ iCal).
 
 Pipeline: `cron → scrapers → normalize + dedup (fingerprint) → MongoDB → API → feed UI → calendar`.
 
@@ -43,9 +45,12 @@ curl -X POST http://localhost:3000/api/refresh \
 | `.claude/docs/` | Project knowledge base: CONTEXT, decisions (ADRs), gotchas |
 
 **Sources** — Luma (direct public JSON API, free), MLH (embedded season-page JSON),
-company registry (provider-agnostic adapters: Luma calendars + WordPress Events
-Calendar REST — add a company in one line in `lib/fetchers/config.ts`),
-Eventbrite + Meetup (paid Apify actors, capped via `SCRAPE_MAX_ITEMS`).
+company registry (provider-agnostic: generic Luma-calendar + WordPress Events Calendar
+adapters, and bespoke platform adapters in `lib/fetchers/companies/` for Google, AWS,
+Microsoft Reactor, Y Combinator, NVIDIA, Tesla, Databricks, Snowflake, Figma — add a
+company in one line in `lib/fetchers/config.ts`), Eventbrite + Meetup (paid Apify
+actors, capped via `SCRAPE_MAX_ITEMS`). All company endpoints were live-verified —
+fetch strategies and traps are documented in `.claude/docs/gotchas.md`.
 
 ## Deploy
 

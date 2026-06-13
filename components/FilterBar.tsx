@@ -3,7 +3,7 @@
 import { useCallback } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import posthog from 'posthog-js';
-import { CITIES, CATEGORY_LABELS, DATE_PRESETS, MODE_LABELS, SOURCE_LABELS } from '@/lib/constants';
+import { CITIES, CATEGORY_LABELS, DATE_PRESETS, MODE_LABELS, REGION_LABELS, SOURCE_LABELS } from '@/lib/constants';
 
 /** Resolve a date-preset key to a from/to range (Toronto-local today). */
 function presetRange(preset: string): { from?: string; to?: string } {
@@ -62,10 +62,11 @@ const FilterBar = () => {
         </label>
     );
 
-    const hasFilters = ['category', 'city', 'mode', 'price', 'source', 'from', 'to', 'q'].some((k) => sp.get(k));
+    const hasFilters = ['region', 'category', 'city', 'mode', 'price', 'source', 'organizer', 'from', 'to', 'q'].some((k) => sp.get(k));
 
     return (
         <div className="bg-dark-100/40 border-dark-200 flex flex-wrap items-end gap-3 rounded-xl border p-4">
+            {select('region', 'Region', [['', 'All of N. America'], ...Object.entries(REGION_LABELS)], sp.get('region') ?? '')}
             {select('category', 'Type', [['', 'All types'], ...Object.entries(CATEGORY_LABELS)], sp.get('category') ?? '')}
             {select('city', 'City', [['', 'All cities'], ...CITIES.map((c): [string, string] => [c, c])], sp.get('city') ?? '')}
             {select('mode', 'Format', [['', 'Any format'], ...Object.entries(MODE_LABELS)], sp.get('mode') ?? '')}

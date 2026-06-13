@@ -146,6 +146,101 @@ Pages query Mongoose via `lib/events.ts` (returns plain serializable `EventDoc`s
 
 ---
 
+## ADR-013 — Bespoke company-platform adapters + CompanyStdEvent (extends ADR-010)
+**Status**: Accepted · 2026-06-11
+
+**Context**: The registry model (ADR-010) covered only Luma/tribe platforms, so FAANG-class
+companies (the product's intended hero content) contributed zero events. A 12-agent research
+pass live-verified a server-fetchable feed for every major target — including Microsoft
+Reactor, which ADR-010 wrote off as a JS-only SPA (its SPA calls an open JSON API:
+`developer.microsoft.com/reactor/api/events`).
+
+**Decision**: Keep the registry, add a layer of **bespoke platform adapters** in
+`lib/fetchers/companies/` (google devsite HTML, aws directory API, reactor API, yc
+Inertia data-page, nvidia AEM DAM JSON, tesla events API, databricks Gatsby page-data,
+snowflake AEM `__INITIAL_STATE__`, figma RSC flight payload). All emit one shared
+intermediate shape — `CompanyStdEvent` (`companies/shared.ts`) — so `normalize.ts` has
+exactly one mapper (`mapStdCompanyEvent`) for every bespoke platform. Companies on Luma
+remain pure config: DeepMind, Modal, Cursor, LangChain, Cloudflare, Hugging Face, W&B,
+Vercel, Perplexity, ElevenLabs, Linear were added by `calendar_api_id` (several had 0
+upcoming events on add-day; they cost one request and populate themselves).
+
+**Still skipped**: GDG/Bevy + CNCF community (the API works unauthenticated but
+robots.txt disallows `/api/` — etiquette call, unchanged from ADR-010), Apple/Meta/OpenAI/
+Anthropic (no public feed or empty Luma calendars under squatted vanity slugs).
+
+**Consequences**: `source: 'company'` went from 3 orgs to 24; events are now global
+(city/country are free-text worldwide, 'Online', or 'TBA'), so company events bypass the
+ADR-011 region scoping by design. Scraper upsert slugs now include the event date —
+recurring series (Reactor, Figma webinars) reuse titles across dates and a bare-title
+slug would E11000-drop every later occurrence. Per-feed traps live in gotchas.md.
+
+---
+
+## ADR-014 — Home hierarchy: official company events first (dev.events teardown)
+**Status**: Accepted · 2026-06-11
+
+A structural teardown of dev.events informed the redesign: hierarchy is expressed in
+order and URL structure, not just styling. Home = company events (primary grid +
+organizer chip links), hackathons (distinct tinted container), community/local rails
+(de-emphasized, scoped to luma/eventbrite/meetup so company events don't repeat).
+`organizer` is now a first-class filter (`queryEvents`, `/api/events`, `/events?organizer=`).
+Detail pages emit schema.org Event JSON-LD (dev.events both emits it and *watches
+organizer sites for it* to auto-relist editions — emitting makes us machine-readable
+to search engines and other aggregators). Deliberately not copied: per-event ICS
+endpoints (AddToCalendar covers it) and iframe detail pages (X-Frame-Options breaks
+corporate sites; we link out instead).
+
+---
+
+## ADR-015 — North-America scope: geo classifier + region gate (refines ADR-013)
+**Status**: Accepted · 2026-06-13
+
+**Context**: The bespoke company adapters (ADR-013) pull GLOBAL events — a single
+company scrape produced in-person events in Bengaluru, London, Sydney, Paris, Seoul,
+etc. The product is for a Toronto-based user: Canada-first, US welcome, the rest noise.
+The stored `country` was useless for filtering (58/122 company events were 'TBA' because
+adapters only captured a city), so the real signal is the `city` string.
+
+**Decision**: A self-contained classifier `lib/fetchers/geo.ts` — `classifyRegion({city,
+country, venue, online, regions})` → `{ country, region: 'CA'|'US'|'ONLINE'|'INTL'|'UNKNOWN',
+isNorthAmerica }` — backed by a curated world-city DB plus US-state / Canadian-province /
+country-name detection. `normalize.ts` runs it for EVERY source, setting a clean canonical
+`country` and a new persisted+indexed `region` field (non-NA, incl. region-hint-excluded
+online events, collapse to `INTL`). `lib/scrape.ts` drops `region === 'INTL'` before upsert,
+so foreign events never enter the DB. The 3 adapters whose source exposes an authoritative
+audience region (NVIDIA `regions`, Databricks `fieldEventRegions`, Microsoft `regions`) pass
+it as `_regions` so online/ambiguous events classify correctly. Also in geo.ts: `cleanTitle()`
+(applied to all titles) repairs run-together scraped titles, e.g. `//localhost:bengaluru`
+→ `//localhost: Bengaluru`, without mangling well-formed ones.
+
+**Conservative by design**: only POSITIVELY-foreign events (`INTL`) are dropped; `UNKNOWN`
+(bare 'TBA', 'Hybrid Event', unrecognized cities) is kept — better to show an
+unclassifiable AWS webinar than to silently drop a real NA event. Bare `London` →
+United Kingdom; only `London, ON` → Canada (documented in geo.ts).
+
+**Consequences**: Company events went 122 → 74 (foreign dropped), distribution CA 48 /
+US 32 / Online 28 / Unknown 6 / INTL 0. The `region` field powers the `/events?region=`
+filter and the home page's Canada/US/Online sections (ADR-016). A misspelled source city
+('Syndey') can slip through as `UNKNOWN`; acceptable. Mexico is treated as INTL despite
+being geographically North American — the product means Canada + US.
+
+---
+
+## ADR-016 — Home IA: North America, Canada-first, US + Online secondary (refines ADR-014)
+**Status**: Accepted · 2026-06-13
+
+Home order: hero ("Official Dev Events Across North America") → **Company events**
+(primary, soonest-per-company highlights + organizer chips) → **Hackathons** (distinct
+tinted container) → **In Canada** (Canadian city rails, all sources — the user's
+primary-use layer) → **In the United States** (US company events, secondary) → **Online**.
+Cards carry a country flag (🇨🇦/🇺🇸/🌐 via `COUNTRY_FLAG`). A `region` select leads the
+FilterBar. Community sources (Luma/Eventbrite/Meetup/MLH) remain Canada-scoped by their
+city/season queries, so the region gate is a no-op for them in practice (verified: 0 of 40
+community events classified INTL).
+
+---
+
 ## Known follow-ups / tech debt
 - ~~`database/mongodb.ts` stray `v8` import~~ — already removed.
 - ~~`normalizeDate()` UTC day-shift~~ — **fixed 2026-06-10**: `normalizeDate`/`normalizeTime` extract wall-clock parts in the event's IANA timezone (`Intl.DateTimeFormat`); `event.model.ts` reuses the same helpers.

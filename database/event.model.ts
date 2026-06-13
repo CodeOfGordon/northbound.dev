@@ -28,6 +28,7 @@ export interface IEvent extends Document {
     isFree?: boolean;
     price?: string;
     category?: 'hackathon' | 'meetup' | 'conference' | 'networking';
+    region?: 'CA' | 'US' | 'ONLINE' | 'INTL' | 'UNKNOWN'; // North-America scope (derived in normalize)
     createdAt: Date;
     updatedAt: Date;
 }
@@ -124,6 +125,7 @@ const EventSchema = new Schema<IEvent>(
     isFree:   { type: Boolean },
     price:    { type: String, trim: true },
     category: { type: String, enum: ['hackathon', 'meetup', 'conference', 'networking'] },
+    region:   { type: String, enum: ['CA', 'US', 'ONLINE', 'INTL', 'UNKNOWN'] },
     },
     {
         timestamps: true, // Auto-generate createdAt and updatedAt
@@ -174,6 +176,7 @@ EventSchema.index({ fingerprint: 1 }, { unique: true, sparse: true });
 EventSchema.index({ mode: 1, date: 1 });
 EventSchema.index({ city: 1, date: 1 });
 EventSchema.index({ tags: 1, date: 1 });
+EventSchema.index({ region: 1, date: 1 });
 EventSchema.index({ date: 1, _id: 1 });
 
 // Full-text search for the keyword (?q=) filter

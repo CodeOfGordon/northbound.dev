@@ -21,6 +21,33 @@ export async function generateMetadata({ params }: { params: Params }): Promise<
     };
 }
 
+/** schema.org Event JSON-LD — earns rich results and makes the feed machine-readable. */
+function eventJsonLd(event: NonNullable<Awaited<ReturnType<typeof getEventBySlug>>>) {
+    const online = event.mode === 'online';
+    return {
+        '@context': 'https://schema.org',
+        '@type': 'Event',
+        name: event.title,
+        description: event.description,
+        startDate: `${event.date}T${event.time}:00`,
+        ...(event.endDate ? { endDate: `${event.endDate}T${event.endTime ?? event.time}:00` } : {}),
+        eventAttendanceMode: online
+            ? 'https://schema.org/OnlineEventAttendanceMode'
+            : 'https://schema.org/OfflineEventAttendanceMode',
+        location: online
+            ? { '@type': 'VirtualLocation', url: event.url }
+            : {
+                  '@type': 'Place',
+                  name: event.venue,
+                  address: { '@type': 'PostalAddress', addressLocality: event.city, addressCountry: event.country },
+              },
+        organizer: { '@type': 'Organization', name: event.organizer },
+        ...(event.image ? { image: [event.image] } : {}),
+        url: event.url,
+        ...(event.isFree ? { isAccessibleForFree: true } : {}),
+    };
+}
+
 const EventPage = async ({ params }: { params: Params }) => {
     const { slug } = await params;
     const event = await getEventBySlug(slug);
@@ -38,6 +65,10 @@ const EventPage = async ({ params }: { params: Params }) => {
 
     return (
         <section className="flex flex-col gap-14">
+            <script
+                type="application/ld+json"
+                dangerouslySetInnerHTML={{ __html: JSON.stringify(eventJsonLd(event)) }}
+            />
             <div className="flex flex-col gap-6">
                 <div className="flex flex-wrap items-center gap-2">
                     {chips.map((chip) => (

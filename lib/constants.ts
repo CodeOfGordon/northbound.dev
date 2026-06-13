@@ -34,6 +34,21 @@ export const MODE_LABELS: Record<string, string> = {
     hybrid: 'Hybrid',
 };
 
+/** Region filter — the product focuses on North America (Canada-first), plus online. */
+export const REGION_LABELS: Record<string, string> = {
+    canada: 'Canada',
+    us: 'United States',
+    online: 'Online',
+};
+
+/** Small flag/region indicator for cards + detail. Keyed by canonical country string. */
+export const COUNTRY_FLAG: Record<string, string> = {
+    Canada: '🇨🇦',
+    'United States': '🇺🇸',
+    Online: '🌐',
+    'North America': '🌎',
+};
+
 export const DATE_PRESETS = [
     { value: '', label: 'Upcoming' },
     { value: 'today', label: 'Today' },

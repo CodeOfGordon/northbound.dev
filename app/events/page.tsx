@@ -8,7 +8,8 @@ import { queryEvents } from '@/lib/events';
 
 export const metadata: Metadata = {
     title: 'All events — DevEvents',
-    description: 'Filter and search tech, AI & data events across the GTA, Ottawa & Quebec.',
+    description:
+        'Filter and search official company dev events, hackathons and community tech events — from big tech to the GTA, Ottawa & Quebec scenes.',
 };
 
 type SearchParams = Record<string, string | string[] | undefined>;
@@ -24,6 +25,8 @@ const EventsPage = async ({ searchParams }: { searchParams: Promise<SearchParams
         mode: first(sp.mode),
         category: first(sp.category),
         source: first(sp.source),
+        organizer: first(sp.organizer),
+        region: first(sp.region),
         price: first(sp.price),
         from: first(sp.from),
         to: first(sp.to),
@@ -46,6 +49,7 @@ const EventsPage = async ({ searchParams }: { searchParams: Promise<SearchParams
                     <p className="text-light-200 mt-2 text-sm">
                         {result.total} upcoming event{result.total === 1 ? '' : 's'}
                         {first(sp.q) ? ` for “${first(sp.q)}”` : ''}
+                        {first(sp.organizer) ? ` from ${first(sp.organizer)}` : ''}
                     </p>
                 </div>
                 <SearchBox />

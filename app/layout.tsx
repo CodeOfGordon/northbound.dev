@@ -13,9 +13,9 @@ const martianMono = Martian_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "DevEvents — Tech, AI & Data Events in the GTA, Ottawa & Quebec",
+  title: "DevEvents — Official Big-Tech Dev Events, Hackathons & Community Meetups",
   description:
-    "One feed for dev meetups, company events and hackathons across the Greater Toronto Area, Ottawa and Quebec — aggregated from Luma, Eventbrite, Meetup, MLH and company sites.",
+    "One feed of official dev events from Google, AWS, Microsoft, NVIDIA, YC, Databricks and 20+ more companies — plus hackathons and community meetups around Toronto, Ottawa and Quebec.",
 };
 
 export default function RootLayout({
