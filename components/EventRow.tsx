@@ -40,7 +40,7 @@ const EventRow = ({ event }: Props) => {
                 {mode === 'online' ? 'Online' : formatTime(time)}
             </span>
 
-            <EventImage src={image} alt={title} className="h-14 w-20 shrink-0 rounded-lg max-sm:hidden" />
+            <EventImage src={image} alt={title} w={240} className="h-14 w-20 shrink-0 rounded-lg max-sm:hidden" />
 
             <div className="min-w-0 flex-1">
                 <h3 className="group-hover:text-primary truncate text-[15px] font-semibold leading-tight transition-colors">

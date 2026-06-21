@@ -8,7 +8,7 @@ interface Props {
 const EventGrid = ({ events }: Props) => (
     <ul className="grid list-none grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
         {events.map((event) => (
-            <li key={event.slug} className="cv-card">
+            <li key={event.slug}>
                 <EventCard event={event} />
             </li>
         ))}
