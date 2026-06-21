@@ -6,7 +6,7 @@
  * Verified live 2026-06-10; entries embed the event plus calendar/hosts/ticket context.
  */
 import { getJSON } from './util';
-import { LUMA_CITY_SLUGS, MAX_ITEMS } from './config';
+import { LUMA_CITY_SLUGS, LUMA_HACKATHON_CATEGORIES, MAX_ITEMS } from './config';
 import { isRelevant } from './relevance';
 
 const API = 'https://api.lu.ma';
@@ -33,6 +33,13 @@ async function calendarEvents(calendarApiId: string): Promise<LumaRaw[]> {
 async function discoverEvents(placeApiId: string): Promise<LumaRaw[]> {
     const res = await getJSON<{ entries: LumaEntry[] }>(
         `${API}/discover/get-paginated-events?discover_place_api_id=${placeApiId}&pagination_limit=${MAX_ITEMS}`,
+    );
+    return flatten(res.entries ?? []);
+}
+
+async function categoryEvents(categoryApiId: string): Promise<LumaRaw[]> {
+    const res = await getJSON<{ entries: LumaEntry[] }>(
+        `${API}/discover/get-paginated-events?discover_category_api_id=${categoryApiId}&pagination_limit=${MAX_ITEMS}`,
     );
     return flatten(res.entries ?? []);
 }
@@ -69,5 +76,43 @@ export async function fetchLuma(): Promise<unknown[]> {
         seen.add(raw.api_id);
         if (new Date(raw.start_at).getTime() < now) return false;
         return isRelevant(`${raw.name} ${raw.calendar?.name ?? ''}`);
+    });
+}
+
+/** lu.ma has no hackathon category, so hackathons hide in AI/Tech — name-match them. */
+const HACKATHON_NAME = /\b(hackathons?|buildathon|hack[ -]?(night|fest|day|lab|sprint|week(end)?)|hack the)\b/i;
+
+/**
+ * Hackathon source contribution: lu.ma AI + Tech discover feeds, kept to
+ * hackathon-named events that are virtual or in CA/US (the global feeds surface
+ * Toronto/NYC hackathons the city feeds miss). Tagged `_provider:'luma'` so the
+ * normalizer reuses the verified Luma mapper. No description on discover entries —
+ * the mapper's fallback handles that.
+ */
+export async function fetchLumaHackathons(): Promise<unknown[]> {
+    const perCategory = await Promise.all(
+        LUMA_HACKATHON_CATEGORIES.map(async (cat) => {
+            try {
+                return await categoryEvents(cat);
+            } catch (e) {
+                console.warn(`luma-hackathons: category "${cat}" skipped — ${(e as Error).message}`);
+                return [];
+            }
+        }),
+    );
+
+    const seen = new Set<string>();
+    const now = Date.now();
+    return perCategory.flat().filter((raw) => {
+        if (seen.has(raw.api_id)) return false;
+        seen.add(raw.api_id);
+        if (new Date(raw.start_at).getTime() < now) return false;
+        if (!HACKATHON_NAME.test(raw.name ?? '')) return false;
+        const cc = String(raw.geo_address_info?.country_code ?? '').toUpperCase();
+        const virtual = raw.location_type === 'virtual';
+        if (!virtual && cc !== 'US' && cc !== 'CA') return false;
+        raw._provider = 'luma';
+        raw._company = raw.calendar?.name ?? raw.hosts?.[0]?.name; // preserve organizer
+        return true;
     });
 }

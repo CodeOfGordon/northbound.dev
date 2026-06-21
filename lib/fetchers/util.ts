@@ -1,4 +1,4 @@
-const USER_AGENT = 'DevEventsBot/1.0 (+https://github.com/CodeOfGordon/dev-events)';
+const USER_AGENT = 'NorthboundBot/1.0 (+https://github.com/CodeOfGordon)';
 
 export async function getJSON<T = unknown>(url: string): Promise<T> {
     const res = await fetch(url, {

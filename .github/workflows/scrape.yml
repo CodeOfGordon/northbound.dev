@@ -1,12 +1,17 @@
 # Scheduled scrape: hits POST /api/refresh on the deployed site.
 #
-# Required repo secrets:
-#   SITE_URL    — deployed base URL, e.g. https://devevents.vercel.app (no trailing slash)
+# Required repo secrets (Settings → Secrets and variables → Actions):
+#   SITE_URL    — deployed base URL, e.g. https://northbound.vercel.app (no trailing slash)
 #   CRON_SECRET — same value as the CRON_SECRET env var on the deployment
 #
-# Free sources (luma, mlh, company — public JSON/HTML) run nightly.
-# Paid Apify sources (eventbrite, meetup) run weekly to stay inside the
-# free-tier credit; bump the cadence if the Apify plan grows.
+# Without those two secrets the job can't reach the site, so it now SKIPS with a
+# warning instead of failing cryptically (the previous behaviour: curl to an empty
+# URL exited non-zero within seconds). A manual run still errors so you get clear
+# feedback while wiring it up. Setup walkthrough: docs/scheduled-scrape.md
+#
+# Free sources (luma, mlh, hackathon, company — public JSON/HTML) run nightly.
+# Paid Apify sources (eventbrite, meetup) run weekly to stay inside the free-tier
+# credit; bump the cadence if the Apify plan grows.
 name: Scrape events
 
 on:
@@ -18,13 +23,41 @@ on:
       sources:
         description: 'Space-separated sources to scrape (default: all)'
         required: false
-        default: 'luma mlh company eventbrite meetup'
+        default: 'luma mlh hackathon company eventbrite meetup'
 
 jobs:
   scrape:
     runs-on: ubuntu-latest
+    env:
+      SITE_URL: ${{ secrets.SITE_URL }}
+      CRON_SECRET: ${{ secrets.CRON_SECRET }}
     steps:
+      - name: Check configuration
+        id: cfg
+        run: |
+          if [ -z "$SITE_URL" ] || [ -z "$CRON_SECRET" ]; then
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            {
+              echo "### ⚠️ Scheduled scrape is not configured"
+              echo ""
+              echo "Set these **repository secrets** so the workflow can reach the deployment:"
+              echo "- \`SITE_URL\` — deployed base URL (e.g. \`https://northbound.vercel.app\`, no trailing slash)"
+              echo "- \`CRON_SECRET\` — must match the \`CRON_SECRET\` env var on the deployment"
+              echo ""
+              echo "Settings → Secrets and variables → Actions → New repository secret."
+              echo "Full walkthrough: \`docs/scheduled-scrape.md\`."
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "::warning::SITE_URL and/or CRON_SECRET are not set — skipping scrape. See the job summary for setup."
+            if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+              echo "::error::Configure SITE_URL and CRON_SECRET repo secrets before running this workflow."
+              exit 1
+            fi
+          else
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Pick sources for this trigger
+        if: steps.cfg.outputs.configured == 'true'
         id: pick
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
@@ -32,21 +65,23 @@ jobs:
           elif [ "${{ github.event.schedule }}" = "45 7 * * 0" ]; then
             echo "sources=eventbrite meetup" >> "$GITHUB_OUTPUT"
           else
-            echo "sources=luma mlh company" >> "$GITHUB_OUTPUT"
+            echo "sources=luma mlh hackathon company" >> "$GITHUB_OUTPUT"
           fi
 
       # One POST per source: each stays well inside the route's 300 s ceiling
       # (meetup alone takes ~4 min) and one slow source can't starve the rest.
       - name: Trigger refresh per source
+        if: steps.cfg.outputs.configured == 'true'
         run: |
           failed=0
           for source in ${{ steps.pick.outputs.sources }}; do
             echo "::group::$source"
-            if ! curl --fail-with-body -sS -X POST "${{ secrets.SITE_URL }}/api/refresh" \
-              -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            if ! curl --fail-with-body -sS -X POST "$SITE_URL/api/refresh" \
+              -H "Authorization: Bearer $CRON_SECRET" \
               -H "Content-Type: application/json" \
               -d "{\"sources\":[\"$source\"]}" \
               --max-time 360; then
+              echo "::warning::refresh failed for source: $source"
               failed=1
             fi
             echo

@@ -143,7 +143,7 @@ export async function GET(request: NextRequest) {
 Use when not on Vercel, or you want the scrape's logs/retries in CI. The workflow
 `curl`s the deployed endpoint with the secret. Store the secret and the deploy URL as
 **repo secrets** (Settings -> Secrets and variables -> Actions): `CRON_SECRET`,
-`REFRESH_URL` (e.g. `https://devevents.example.com/api/refresh`).
+`REFRESH_URL` (e.g. `https://northbound.example.com/api/refresh`).
 
 ```yaml
 # .github/workflows/nightly-refresh.yml

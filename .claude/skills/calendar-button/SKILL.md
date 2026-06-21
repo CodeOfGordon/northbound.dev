@@ -3,7 +3,7 @@ name: calendar-button
 description: Use when adding the Add to Calendar button (Google/Outlook/Apple/iCal) to a React component. Covers add-to-calendar-button-react, the Next.js App Router use-client wrapper, timeZone/startTime formats, and SSR gotchas.
 ---
 
-# Add to Calendar button (DevEvents)
+# Add to Calendar button (Northbound)
 
 Adds an "Add to Calendar" control to an event card so users can drop a scraped event into
 Google / Outlook / Apple / Yahoo / iCal with no backend and no OAuth. Built on

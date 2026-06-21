@@ -34,9 +34,21 @@ export async function GET(request: NextRequest) {
     }
 
     const source = sp.get('source');
-    if (source && SOURCES.includes(source)) {
+    if (source === 'local') {
+        filter.source = { $in: ['luma', 'eventbrite', 'meetup'] as IEvent['source'][] };
+    } else if (source && SOURCES.includes(source)) {
         filter.source = source as IEvent['source'];
     }
+
+    // organizer — case-insensitive exact match (company chips link here)
+    const organizer = sp.get('organizer');
+    if (organizer) filter.organizer = { $regex: `^${escapeRegex(organizer)}$`, $options: 'i' };
+
+    // region — North-America scope shortcut (maps to the derived region field)
+    const region = sp.get('region');
+    if (region === 'canada') filter.region = 'CA';
+    else if (region === 'us') filter.region = 'US';
+    else if (region === 'online') filter.region = 'ONLINE';
 
     const tags = sp.getAll('tag').filter(Boolean);
     if (tags.length) filter.tags = { $in: tags };

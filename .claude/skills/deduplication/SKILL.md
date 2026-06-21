@@ -5,7 +5,7 @@ description: Use when deduplicating events that appear on multiple sources. Cove
 
 # Event Deduplication (fingerprint + upsert)
 
-DevEvents scrapes the same event from many sources: Luma, Eventbrite, Meetup, MLH, and
+Northbound scrapes the same event from many sources: Luma, Eventbrite, Meetup, MLH, and
 company sites (RBC, GDG, AWS, Databricks). The same Toronto meetup routinely shows up on
 two or three of them. We collapse those into ONE `Event` document with a deterministic
 **fingerprint** that becomes a unique key, then **upsert on that fingerprint** so re-runs

@@ -1,6 +1,6 @@
 # Gotchas & Known Issues
 
-Project-specific traps for the Tech Event Aggregator (DevEvents). Read this before
+Project-specific traps for the Tech Event Aggregator (Northbound). Read this before
 touching scraping, dedup, the calendar button, MongoDB, or Next.js route handlers.
 
 > Stack reality check: this is a **heavily modified Next.js 16.2.6** whose APIs differ
@@ -39,6 +39,29 @@ touching scraping, dedup, the calendar button, MongoDB, or Next.js route handler
 - Season pages (`mlh.io/seasons/2026/events`) embed the full event list as a JSON array (`[{"id":"…`): `name`, `startsAt`/`endsAt` UTC ISO, `venueAddress{city,state,country}`, `formatType` `physical|digital`, `websiteUrl`, `status`. Extract with a balanced-bracket scan from the `[{"id":"` marker — no HTML parser needed.
 - Pages list the whole season including `status: "ended"` events — filter on status + end date.
 - Digital events are "Everywhere, Worldwide" (sometimes country `US`) — store as city `Online`, keep them (joinable from anywhere).
+
+### Company platform feeds (`lib/fetchers/companies/` — all live-verified 2026-06-10/11)
+- **curl is NOT a valid smoke test for Tesla or Databricks.** Both sit behind TLS-fingerprinting CDNs (Akamai / Cloudflare) that 403 every curl request regardless of headers, while Node's native fetch passes with a browser-ish UA. Test with `npx tsx`, never curl. Conversely the production runtime (Node fetch) is exactly the client that works.
+- **NVIDIA + Figma robots.txt blanket-block AI-crawler UA tokens** (anthropic-ai, GPTBot, ...). Those adapters send `BROWSER_UA` from `companies/shared.ts`, not the NorthboundBot UA in `util.ts`.
+- **Google devsite randomly machine-translates** `developers.google.com/events` (observed th/pt-BR/ko on back-to-back requests), which translates the h3 slugs used as ids. Pin `?hl=en` + `accept-language: en-US`. Gallery dates are free text without year ("June 9-10 (Frankfurt) | In-person") — year inference + Dec→Jan wrap handled in the adapter; explicit ", YYYY" suffixes win.
+- **Microsoft Reactor API** is `/reactor/api/events` with NO culture prefix (`/en-us/reactor/api/...` 404s). 10 items/page regardless of the UI's 9. Instants are true UTC but there is **no per-event IANA zone** — events render in UTC wall-clock. `formats=In person` filter value has a space. `isSeries` items are skipped.
+- **Tesla dates are faux-UTC**: `dates[].startDate` is the local calendar date encoded at `T00:00:00+00:00` — never treat it as an instant; the real zone is `locations[0].timezone` and the real clock time only exists in the human `hours` string ("11 AM - 5 PM"). lat/lng params are REQUIRED (412 without); events are radius-scoped per city centroid (registry lists Toronto + Montreal).
+- **Databricks page-data is ~2.25 MB** and `eventsEN` still contains Korean/Japanese items (CJK titles dropped in the adapter) plus one item with null `fieldDateTimeTimezone` (guarded). The time-of-day in `fieldDateTimeTimezone` is a CMS save artifact — date-only.
+- **NVIDIA's AEM calendar is hand-edited**: mixed date formats (YYYY-MM-DD, M/D/YY, MM-DD-YY, MM-DD-YYYY, literal 'TBC'), trailing-space regions, mostly empty urls, no ids/images. `parseLooseUSDate` in `companies/shared.ts`; items whose start won't parse are skipped.
+- **Snowflake**: parse `__INITIAL_STATE__` from the developers/events page — the cleaner `_jcr_content/...filter.json` API works but matches `Disallow: /*/_jcr_content/` in robots.txt, so don't use it. `eventDate` is 'DD MON' with no year → resolve to next occurrence (the feed is upcoming-only). Location typos exist ('Syndey').
+- **Figma**: events live in RSC flight chunks (`self.__next_f.push`) — take the FIRST `eventListLego` occurrence with an inline events array (later ones are `$`-refs). Tied to Next flight encoding + Sanity type names; the adapter deliberately THROWS on zero extraction so the registry logs it instead of silently going quiet.
+- **YC has no public event index.** `workatastartup.com/events` `props.eventsUpcoming` is usually empty; the registry MUST seed `slugs` (e.g. `startup-school-2026`) or the adapter yields 0. Discover new slugs via Brave search `site:events.ycombinator.com` or the YC blog tag, then add to config.
+- **Scraper slugs include the event date** (`lib/scrape.ts`): recurring series (Reactor, Figma webinars) reuse titles across dates; a bare-title slug hits the unique index and silently drops later occurrences as benign-looking E11000s.
+- **Luma vanity-slug squatting is rampant**: lu.ma/cohere is a coliving community, lu.ma/modal is unrelated (Modal is `modal-labs`). Always resolve the slug, check the calendar's display name, and prefer pinning `calendar_api_id` in config.
+
+### Geo classification + North-America scope (ADR-015)
+- The stored `country` from company adapters is unreliable (most were 'TBA' — adapters capture a city, not a country). The authoritative location signal is the **`city` string**, classified by `lib/fetchers/geo.ts` → `classifyRegion`. Don't filter on raw `country`.
+- `normalize.ts` sets the persisted **`region`** field (`CA|US|ONLINE|INTL|UNKNOWN`) for every source; `lib/scrape.ts` drops `region === 'INTL'` BEFORE upsert. So foreign events never reach the DB — if you re-add a global source, expect ~⅓ of items to be gated out, and that's correct.
+- Non-NA collapse: `normalize.ts` maps `isNorthAmerica === false` (incl. online events whose `_regions` hint excludes North America, e.g. Microsoft "Build Digital Recap (APAC)") to `region: 'INTL'`. Online events with NO region hint stay (joinable from anywhere).
+- **Re-scraping does NOT delete already-stored foreign events** — upsert only touches matching fingerprints, and gated items are skipped entirely. After tightening the gate you must wipe (`deleteMany({source:'company'})`) and re-scrape, or backfill `region` on existing docs. (A throwaway `tsx` script in the repo root works; `mongoose.connection.db.collection('events')` avoids model-schema stripping. Wrap in an async IIFE — tsx compiles `.ts` as CJS and rejects top-level await.)
+- `cleanTitle` (geo.ts) is applied to ALL titles in `normalize.ts` (so slugs/fingerprints use the cleaned title consistently). It only repairs run-together `letter:lowercase` (→ `: Uppercase`), decodes entities, and trims — it deliberately does NOT re-case words, so brand titles survive.
+- 'London' is the UK by default; only 'London, ON'/'London, Ontario' is the Canadian city. Mexico is treated as INTL (product = Canada + US). Source city typos (e.g. Snowflake 'Syndey') fall through as `UNKNOWN` and are kept — accept it, don't chase typos in the city DB.
+- The MongoDB MCP server is **read-only** (`.mcp.json` `--readOnly`) — deletes/backfills need a `tsx` script, not the MCP.
 
 ### General scraping
 - Run every actor with a small cap on first test, verify field shapes + the run/poll plumbing, then increase. Set the cap as the **`?maxItems=` run option** (billing-enforced), not just the actor input (advisory — see Meetup above).

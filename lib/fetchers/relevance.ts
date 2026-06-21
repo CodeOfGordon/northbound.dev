@@ -14,6 +14,18 @@ export function isRelevant(text: string): boolean {
     return INCLUDE.test(text) && !EXCLUDE.test(text);
 }
 
+/**
+ * Consumer/retail events that leak in from big-brand company feeds (Tesla runs
+ * store celebrations, test drives, holiday events on the same feed as anything
+ * technical). These are noise for a dev-events product — dropped for `company`.
+ */
+const CONSUMER_EXCLUDE =
+    /\b(father'?s day|mother'?s day|valentine|test drive|demo drive|ride[- ]?along|delivery (event|day)|trade[- ]?in|owners?'? (event|night|appreciation|day)|sales? event|holiday (sale|party|event|celebration)|black friday|cyber monday|grand opening|store (opening|event|celebration)|family day|easter|halloween|thanksgiving|christmas|new year|vip night|customer appreciation|open house)\b/i;
+
+export function isConsumerEvent(text: string): boolean {
+    return CONSUMER_EXCLUDE.test(text);
+}
+
 const TAG_PATTERNS: [string, RegExp][] = [
     ['ai', /\b(ai|artificial intelligence|machine[- ]learning|deep[- ]learning|llms?|gen[- ]?ai|generative|agentic|nlp|computer vision|neural)\b/i],
     ['data', /\b(data|analytics|big data|etl|warehouse|database)\b/i],

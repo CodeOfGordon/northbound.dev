@@ -5,7 +5,7 @@ description: Use when invoking Apify actors via the Apify MCP server or REST API
 
 # Apify Actors — Scraping Luma / Eventbrite / Meetup
 
-Use Apify actors to pull raw upcoming-event JSON for the DevEvents feed (GTA tech/AI/data
+Use Apify actors to pull raw upcoming-event JSON for the Northbound feed (GTA tech/AI/data
 events + hackathons). Raw output goes to the normalizer, which upserts into the Mongoose
 `Event` model (see `database/event.model.ts`). This skill covers picking actors, running
 them (MCP + REST), polling, fetching dataset items, auth, and budgeting.

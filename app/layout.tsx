@@ -1,21 +1,47 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Schibsted_Grotesk, Martian_Mono } from "next/font/google";
 import "./globals.css";
-import LightRays from "@/components/LightRays";
+import Backdrop from "@/components/Backdrop";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 
-const schibstedGrotesk = Schibsted_Grotesk({variable: "--font-schibsted-grotesk"})
+const schibstedGrotesk = Schibsted_Grotesk({
+  variable: "--font-schibsted-grotesk",
+  subsets: ["latin"],
+  display: "swap",
+});
 
 const martianMono = Martian_Mono({
   variable: "--font-martian-mono",
   subsets: ["latin"],
+  display: "swap",
 });
 
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://northbound.vercel.app";
+
 export const metadata: Metadata = {
-  title: "DevEvents — Tech, AI & Data Events in the GTA, Ottawa & Quebec",
+  metadataBase: new URL(SITE_URL),
+  title: "Northbound — Official Dev Events, Hackathons & Meetups Across North America",
   description:
-    "One feed for dev meetups, company events and hackathons across the Greater Toronto Area, Ottawa and Quebec — aggregated from Luma, Eventbrite, Meetup, MLH and company sites.",
+    "One clean feed of official dev events from Google, AWS, Microsoft, NVIDIA, YC, Databricks and 20+ more companies — plus hackathons and community meetups across Canada, the U.S. and online.",
+  applicationName: "Northbound",
+  openGraph: {
+    type: "website",
+    siteName: "Northbound",
+    title: "Northbound — Official dev events, hackathons & meetups",
+    description:
+      "One clean feed of official dev events from 38+ companies — plus hackathons and community meetups across North America. Canada-first, updated nightly.",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Northbound — Official dev events, hackathons & meetups",
+    description:
+      "Official dev events, hackathons & meetups across North America — one clean feed. Canada-first, updated nightly.",
+  },
+};
+
+export const viewport: Viewport = {
+  themeColor: "#0a0b0d",
 };
 
 export default function RootLayout({
@@ -26,34 +52,12 @@ export default function RootLayout({
   return (
     <html
         lang="en"
-        className={`${schibstedGrotesk.variable} ${martianMono.variable} min-h-screen antialiased`}
+        className={`${schibstedGrotesk.variable} ${martianMono.variable} min-h-screen scroll-smooth antialiased`}
     >
-
-      <body className="min-h-full flex flex-col">
+      <body className="flex min-h-screen flex-col">
+        <Backdrop />
         <Navbar />
-
-        <div className="absolute inset-0 top-0 z-[-1] min-h-screen">
-          <LightRays
-            raysOrigin="top-center"
-            raysColor="#ffffff"
-            raysSpeed={0.5}
-            lightSpread={0.9}
-            rayLength={1}
-            followMouse={true}
-            mouseInfluence={0.01}
-            noiseAmount={0}
-            distortion={0}
-            className="custom-rays"
-            pulsating={false}
-            fadeDistance={1}
-            saturation={1}
-          />
-        </div>
-        
-        <main>
-          {children}
-        </main>
-
+        <main>{children}</main>
         <Footer />
       </body>
     </html>

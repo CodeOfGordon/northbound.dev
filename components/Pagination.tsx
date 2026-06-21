@@ -24,7 +24,7 @@ const Pagination = ({ page, total, limit, searchParams }: Props) => {
 
     const linkCls = (disabled: boolean) =>
         cn(
-            'border-dark-200 flex items-center gap-1 rounded-lg border px-4 py-2 text-sm',
+            'border-border-dark bg-dark-100/60 flex items-center gap-1 rounded-lg border px-4 py-2 text-sm transition-colors',
             disabled ? 'text-light-200/40 pointer-events-none' : 'hover:border-primary/50 hover:text-primary',
         );
 

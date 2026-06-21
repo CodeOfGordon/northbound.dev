@@ -22,12 +22,13 @@ export interface IEvent extends Document {
     organizer: string;
     tags: string[];
     url: string;                  // canonical link to the source event page
-    source: 'luma' | 'eventbrite' | 'meetup' | 'mlh' | 'company';
+    source: 'luma' | 'eventbrite' | 'meetup' | 'mlh' | 'company' | 'hackathon';
     sourceId?: string;            // platform-native id, when available
     fingerprint?: string;         // dedup key — set by the scraper upsert path
     isFree?: boolean;
     price?: string;
     category?: 'hackathon' | 'meetup' | 'conference' | 'networking';
+    region?: 'CA' | 'US' | 'ONLINE' | 'INTL' | 'UNKNOWN'; // North-America scope (derived in normalize)
     createdAt: Date;
     updatedAt: Date;
 }
@@ -118,12 +119,13 @@ const EventSchema = new Schema<IEvent>(
     endTime:  { type: String },
     timezone: { type: String, default: 'America/Toronto' },
     url:      { type: String, required: [true, 'Source URL is required'], trim: true },
-    source:   { type: String, enum: ['luma', 'eventbrite', 'meetup', 'mlh', 'company'], required: [true, 'Source is required'] },
+    source:   { type: String, enum: ['luma', 'eventbrite', 'meetup', 'mlh', 'company', 'hackathon'], required: [true, 'Source is required'] },
     sourceId: { type: String, trim: true },
     fingerprint: { type: String },
     isFree:   { type: Boolean },
     price:    { type: String, trim: true },
     category: { type: String, enum: ['hackathon', 'meetup', 'conference', 'networking'] },
+    region:   { type: String, enum: ['CA', 'US', 'ONLINE', 'INTL', 'UNKNOWN'] },
     },
     {
         timestamps: true, // Auto-generate createdAt and updatedAt
@@ -164,8 +166,8 @@ export function generateSlug(title: string): string {
         .replace(/^-|-$/g, ''); // Remove leading/trailing hyphens
 }
 
-// Create unique index on slug for better performance
-EventSchema.index({ slug: 1 }, { unique: true });
+// (slug's unique index is declared via `unique: true` on the field above —
+// re-declaring it here caused a duplicate-index warning, so it's intentionally omitted.)
 
 // Dedup key — sparse so hand-entered events without a fingerprint don't collide on null
 EventSchema.index({ fingerprint: 1 }, { unique: true, sparse: true });
@@ -174,6 +176,7 @@ EventSchema.index({ fingerprint: 1 }, { unique: true, sparse: true });
 EventSchema.index({ mode: 1, date: 1 });
 EventSchema.index({ city: 1, date: 1 });
 EventSchema.index({ tags: 1, date: 1 });
+EventSchema.index({ region: 1, date: 1 });
 EventSchema.index({ date: 1, _id: 1 });
 
 // Full-text search for the keyword (?q=) filter

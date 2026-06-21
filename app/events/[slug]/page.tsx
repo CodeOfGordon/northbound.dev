@@ -5,7 +5,7 @@ import EventImage from '@/components/EventImage';
 import AddToCalendar from '@/components/AddToCalendar';
 import RegisterButton from '@/components/RegisterButton';
 import EventGrid from '@/components/EventGrid';
-import { CATEGORY_LABELS, HIDDEN_TAGS, MODE_LABELS, SOURCE_LABELS } from '@/lib/constants';
+import { CATEGORY_LABELS, HIDDEN_TAGS, LANE_LABELS, laneOf, MODE_LABELS } from '@/lib/constants';
 import { formatDate, formatTime } from '@/lib/format';
 import { getEventBySlug, getRelatedEvents } from '@/lib/events';
 
@@ -14,10 +14,37 @@ type Params = Promise<{ slug: string }>;
 export async function generateMetadata({ params }: { params: Params }): Promise<Metadata> {
     const { slug } = await params; // Next 16: params is a Promise
     const event = await getEventBySlug(slug);
-    if (!event) return { title: 'Event not found — DevEvents' };
+    if (!event) return { title: 'Event not found — Northbound' };
     return {
-        title: `${event.title} — DevEvents`,
+        title: `${event.title} — Northbound`,
         description: event.description.slice(0, 160),
+    };
+}
+
+/** schema.org Event JSON-LD — earns rich results and makes the feed machine-readable. */
+function eventJsonLd(event: NonNullable<Awaited<ReturnType<typeof getEventBySlug>>>) {
+    const online = event.mode === 'online';
+    return {
+        '@context': 'https://schema.org',
+        '@type': 'Event',
+        name: event.title,
+        description: event.description,
+        startDate: `${event.date}T${event.time}:00`,
+        ...(event.endDate ? { endDate: `${event.endDate}T${event.endTime ?? event.time}:00` } : {}),
+        eventAttendanceMode: online
+            ? 'https://schema.org/OnlineEventAttendanceMode'
+            : 'https://schema.org/OfflineEventAttendanceMode',
+        location: online
+            ? { '@type': 'VirtualLocation', url: event.url }
+            : {
+                  '@type': 'Place',
+                  name: event.venue,
+                  address: { '@type': 'PostalAddress', addressLocality: event.city, addressCountry: event.country },
+              },
+        organizer: { '@type': 'Organization', name: event.organizer },
+        ...(event.image ? { image: [event.image] } : {}),
+        url: event.url,
+        ...(event.isFree ? { isAccessibleForFree: true } : {}),
     };
 }
 
@@ -27,17 +54,20 @@ const EventPage = async ({ params }: { params: Params }) => {
     if (!event) notFound();
 
     const related = await getRelatedEvents(event);
-    const isCompany = event.source === 'company';
     const tags = event.tags.filter((t) => !HIDDEN_TAGS.includes(t));
 
     const chips = [
         event.category && CATEGORY_LABELS[event.category],
         MODE_LABELS[event.mode],
-        isCompany ? 'Company event' : SOURCE_LABELS[event.source],
+        `${LANE_LABELS[laneOf(event.source, event.category)]} event`,
     ].filter(Boolean) as string[];
 
     return (
         <section className="flex flex-col gap-14">
+            <script
+                type="application/ld+json"
+                dangerouslySetInnerHTML={{ __html: JSON.stringify(eventJsonLd(event)) }}
+            />
             <div className="flex flex-col gap-6">
                 <div className="flex flex-wrap items-center gap-2">
                     {chips.map((chip) => (
@@ -76,16 +106,14 @@ const EventPage = async ({ params }: { params: Params }) => {
                     {tags.length > 0 && (
                         <div className="flex flex-wrap gap-2">
                             {tags.map((tag) => (
-                                <span key={tag} className="border-dark-200 text-light-200 rounded-full border px-3 py-1 text-sm">
-                                    #{tag}
-                                </span>
+                                <span key={tag} className="chip text-light-200">#{tag}</span>
                             ))}
                         </div>
                     )}
                 </div>
 
                 <aside className="w-full flex-1 lg:sticky lg:top-24">
-                    <div className="bg-dark-100 border-dark-200 card-shadow flex w-full flex-col gap-5 rounded-xl border px-5 py-6">
+                    <div className="bg-dark-100/70 border-border-dark card-shadow flex w-full flex-col gap-5 rounded-xl border px-5 py-6">
                         <div className="text-light-100 flex flex-col gap-3 text-base">
                             <span className="flex items-center gap-3">
                                 <CalendarDays className="text-primary size-5 shrink-0" aria-hidden />

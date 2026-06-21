@@ -5,7 +5,7 @@ description: Use when writing Next.js 16 App Router route handlers - the GET /ap
 
 # Backend API route handlers (Next.js 16 App Router)
 
-DevEvents (Tech Event Aggregator) backend. These handlers serve the normalized event
+Northbound (Tech Event Aggregator) backend. These handlers serve the normalized event
 feed and trigger the scraper. MongoDB + Mongoose is the database — never Supabase/Postgres.
 
 ## READ FIRST (source of truth)
