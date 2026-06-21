@@ -55,8 +55,14 @@ const EventImage = ({ src, alt, className, fill = true }: Props) => {
     // Intrinsic mode (detail): fade in over the page background, keep natural height.
     if (!fill) return img;
 
-    // Fill mode (cards/rows): a sized box with a subtle placeholder behind the fade.
-    return <div className={cn('bg-dark-200/60 relative overflow-hidden', className)}>{img}</div>;
+    // Fill mode (cards/rows): a sized box showing an animated shimmer until the image
+    // decodes, then the image fades in over it.
+    return (
+        <div className={cn('bg-dark-200 relative overflow-hidden', className)}>
+            {!loaded && <span className="skeleton-overlay" aria-hidden />}
+            {img}
+        </div>
+    );
 };
 
 export default EventImage;

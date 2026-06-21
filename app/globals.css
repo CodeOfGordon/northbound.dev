@@ -152,6 +152,48 @@
   }
 }
 
+/* Lenis smooth scroll (components/SmoothScroll.tsx) — required stylesheet. */
+html.lenis,
+html.lenis body {
+  height: auto;
+}
+.lenis.lenis-smooth {
+  scroll-behavior: auto !important;
+}
+.lenis.lenis-smooth [data-lenis-prevent] {
+  overscroll-behavior: contain;
+}
+.lenis.lenis-stopped {
+  overflow: hidden;
+}
+
+/* Image skeleton — an animated shimmer shows until a scraped image decodes, then the
+   image fades in over it (so the grid resolves smoothly instead of popping in). */
+@keyframes shimmer {
+  to {
+    transform: translateX(100%);
+  }
+}
+.skeleton-overlay {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  background: var(--color-dark-200);
+}
+.skeleton-overlay::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.06), transparent);
+  animation: shimmer 1.5s infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .skeleton-overlay::after {
+    animation: none;
+  }
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;

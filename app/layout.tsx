@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Schibsted_Grotesk, Martian_Mono } from "next/font/google";
 import "./globals.css";
 import Backdrop from "@/components/Backdrop";
+import SmoothScroll from "@/components/SmoothScroll";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 
@@ -55,6 +56,7 @@ export default function RootLayout({
         className={`${schibstedGrotesk.variable} ${martianMono.variable} min-h-screen scroll-smooth antialiased`}
     >
       <body className="flex min-h-screen flex-col">
+        <SmoothScroll />
         <Backdrop />
         <Navbar />
         <main>{children}</main>
