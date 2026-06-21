@@ -113,9 +113,11 @@
   @apply bg-gradient-to-br from-white to-light-200 bg-clip-text text-transparent;
 }
 
-/* Frosted surface — sticky header + small overlays. */
+/* Sticky header surface. A solid, nearly-opaque bar instead of backdrop-blur — a
+   backdrop-filter on a sticky element re-blurs everything scrolling under it every
+   frame, which is a major scroll-jank source. */
 @utility glass {
-  @apply border-b border-border-dark bg-[#0a0b0d]/70 backdrop-blur-xl backdrop-saturate-150;
+  @apply border-b border-border-dark bg-[#0a0b0d]/90;
 }
 
 @utility card-shadow {

@@ -5,10 +5,11 @@
  */
 const Backdrop = () => (
     <div aria-hidden className="pointer-events-none fixed inset-0 z-[-1] overflow-hidden">
-        {/* soft accent glow, top-center */}
+        {/* soft accent glow, top-center — a radial-gradient (no filter blur, which is
+            very expensive to re-composite during scroll). */}
         <div
-            className="absolute left-1/2 top-[-18rem] h-[36rem] w-[64rem] -translate-x-1/2 rounded-full opacity-[0.10] blur-[120px]"
-            style={{ background: 'radial-gradient(closest-side, #59deca, transparent)' }}
+            className="absolute left-1/2 top-[-22rem] h-[44rem] w-[72rem] -translate-x-1/2"
+            style={{ background: 'radial-gradient(closest-side, rgba(89,222,202,0.14), transparent 70%)' }}
         />
         {/* faint grid */}
         <div
