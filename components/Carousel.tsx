@@ -1,13 +1,17 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
+import Link from 'next/link';
+import { ArrowRight, ChevronLeft, ChevronRight } from 'lucide-react';
 import EventCard from '@/components/EventCard';
 import { cn } from '@/lib/utils';
 import type { EventDoc } from '@/lib/events';
 
 interface Props {
     events: EventDoc[];
+    /** When set, a trailing "View all" card links here (keeps short rails feeling complete). */
+    viewAllHref?: string;
+    viewAllLabel?: string;
 }
 
 /**
@@ -15,7 +19,7 @@ interface Props {
  * and touch-friendly with no JS on mobile; desktop gets arrow buttons that fade out
  * at the ends. Fixed-width slides keep card heights even.
  */
-const Carousel = ({ events }: Props) => {
+const Carousel = ({ events, viewAllHref, viewAllLabel = 'View all' }: Props) => {
     const ref = useRef<HTMLUListElement>(null);
     const [atStart, setAtStart] = useState(true);
     const [atEnd, setAtEnd] = useState(false);
@@ -66,6 +70,21 @@ const Carousel = ({ events }: Props) => {
                         <EventCard event={event} />
                     </li>
                 ))}
+                {viewAllHref && (
+                    <li className="w-[160px] shrink-0 snap-start sm:w-[180px]">
+                        <Link
+                            href={viewAllHref}
+                            className="group border-border-dark hover:border-primary/50 hover:bg-dark-100/50 flex h-full min-h-[18rem] flex-col items-center justify-center gap-3 rounded-xl border border-dashed p-4 text-center transition-colors"
+                        >
+                            <span className="bg-dark-100 border-border-dark group-hover:border-primary/50 flex size-11 items-center justify-center rounded-full border transition-colors">
+                                <ArrowRight className="text-light-200 group-hover:text-primary size-5 transition-colors" aria-hidden />
+                            </span>
+                            <span className="text-light-100 group-hover:text-primary text-sm font-medium transition-colors">
+                                {viewAllLabel}
+                            </span>
+                        </Link>
+                    </li>
+                )}
             </ul>
             {arrow('left', atStart)}
             {arrow('right', atEnd)}

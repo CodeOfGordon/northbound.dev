@@ -230,8 +230,8 @@ export interface HomeSections {
     companies: { name: string; count: number }[];
     /** Distinct second focus. */
     hackathons: EventDoc[];
-    /** Canada-first local layer: Canadian city rails across all sources. */
-    canada: { city: string; events: EventDoc[] }[];
+    /** Canada-first local layer: Canadian city rails across all sources (+ total per city). */
+    canada: { city: string; events: EventDoc[]; total: number }[];
     /** Secondary geographic section: US company events. */
     unitedStates: EventDoc[];
     /** Online events, joinable from anywhere. */
@@ -274,11 +274,12 @@ export async function getHomeSections(): Promise<HomeSections> {
     const [company, companies, hackathons, unitedStates, online, ...cities] = await Promise.all([
         diverseCompanyEvents(12),
         upcomingCompanies(),
-        queryEvents({ category: 'hackathon', limit: 6 }),
-        queryEvents({ source: 'company', region: 'us', limit: 6 }),
-        queryEvents({ region: 'online', limit: 6 }),
+        queryEvents({ category: 'hackathon', limit: 10 }),
+        queryEvents({ source: 'company', region: 'us', limit: 9 }),
+        queryEvents({ region: 'online', limit: 9 }),
         // Canadian city rails span all sources so local company events appear here too.
-        ...CANADA_CITIES.map((city) => queryEvents({ city, limit: 3 })),
+        // Pull a fuller set so the carousels don't look sparse (was 3).
+        ...CANADA_CITIES.map((city) => queryEvents({ city, limit: 9 })),
     ]);
 
     return {
@@ -287,8 +288,7 @@ export async function getHomeSections(): Promise<HomeSections> {
         hackathons: hackathons.items,
         unitedStates: unitedStates.items,
         online: online.items,
-        canada: CANADA_CITIES.map((city, i) => ({ city, events: cities[i].items })).filter(
-            (c) => c.events.length > 0,
-        ),
+        canada: CANADA_CITIES.map((city, i) => ({ city, events: cities[i].items, total: cities[i].total }))
+            .filter((c) => c.events.length > 0),
     };
 }

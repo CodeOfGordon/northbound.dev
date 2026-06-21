@@ -102,7 +102,11 @@ const Page = async () => {
                             </div>
                         )}
 
-                        <Carousel events={sections.company} />
+                        <Carousel
+                            events={sections.company}
+                            viewAllHref="/events?source=company"
+                            viewAllLabel="All company events"
+                        />
                     </section>
                 )}
 
@@ -116,7 +120,11 @@ const Page = async () => {
                             accent="primary"
                             href="/events?category=hackathon"
                         />
-                        <Carousel events={sections.hackathons} />
+                        <Carousel
+                            events={sections.hackathons}
+                            viewAllHref="/events?category=hackathon"
+                            viewAllLabel="All hackathons"
+                        />
                     </section>
                 )}
 
@@ -129,13 +137,15 @@ const Page = async () => {
                             icon={MapPin}
                             accent="primary"
                         />
-                        {sections.canada.map(({ city, events }) => (
+                        {sections.canada.map(({ city, events, total }) => (
                             <SectionRail
                                 key={city}
                                 title={city}
                                 subtitle={`Upcoming in ${city}`}
                                 href={`/events?city=${encodeURIComponent(city)}`}
                                 events={events}
+                                count={total}
+                                viewAllLabel={`All ${total} in ${city}`}
                             />
                         ))}
                     </section>
@@ -148,6 +158,7 @@ const Page = async () => {
                         subtitle="Company dev events across the U.S."
                         href="/events?region=us&source=company"
                         events={sections.unitedStates}
+                        viewAllLabel="All U.S. events"
                     />
                 )}
 

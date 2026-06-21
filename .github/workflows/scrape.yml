@@ -1,29 +1,29 @@
-# Scheduled scrape: hits POST /api/refresh on the deployed site.
+# Scheduled scrape: nightly POST to /api/refresh on the deployed site.
 #
 # Required repo secrets (Settings → Secrets and variables → Actions):
-#   SITE_URL    — deployed base URL, e.g. https://northbound.vercel.app (no trailing slash)
+#   SITE_URL    — deployed base URL, e.g. https://northbound-dev.vercel.app (no trailing slash)
 #   CRON_SECRET — same value as the CRON_SECRET env var on the deployment
 #
-# Without those two secrets the job can't reach the site, so it now SKIPS with a
-# warning instead of failing cryptically (the previous behaviour: curl to an empty
-# URL exited non-zero within seconds). A manual run still errors so you get clear
-# feedback while wiring it up. Setup walkthrough: docs/scheduled-scrape.md
+# 100% free + deploy-and-forget: only the free public sources run
+# (luma, mlh, hackathon, company — direct JSON/HTML fetches, no Apify). Each is
+# fast (~2-5 s) so they stay well inside Vercel Hobby's ~60 s function cap.
 #
-# Free sources (luma, mlh, hackathon, company — public JSON/HTML) run nightly.
-# Paid Apify sources (eventbrite, meetup) run weekly to stay inside the free-tier
-# credit; bump the cadence if the Apify plan grows.
+# Eventbrite + Meetup are intentionally NOT scheduled: both killed their free public
+# APIs, so they need the paid Apify actors. Run those on demand from your own machine
+# (no 60 s cap, your Apify credit) when you want to top up the Local lane:
+#   curl -X POST http://localhost:3000/api/refresh -H "Authorization: Bearer $CRON_SECRET" \
+#     -H "Content-Type: application/json" -d '{"sources":["eventbrite","meetup"]}'
 name: Scrape events
 
 on:
   schedule:
     - cron: '15 7 * * *' # nightly ~03:15 ET — free sources
-    - cron: '45 7 * * 0' # Sunday ~03:45 ET — paid Apify sources
   workflow_dispatch:
     inputs:
       sources:
-        description: 'Space-separated sources to scrape (default: all)'
+        description: 'Space-separated sources (free only on the hosted site)'
         required: false
-        default: 'luma mlh hackathon company eventbrite meetup'
+        default: 'luma mlh hackathon company'
 
 jobs:
   scrape:
@@ -41,13 +41,12 @@ jobs:
               echo "### ⚠️ Scheduled scrape is not configured"
               echo ""
               echo "Set these **repository secrets** so the workflow can reach the deployment:"
-              echo "- \`SITE_URL\` — deployed base URL (e.g. \`https://northbound.vercel.app\`, no trailing slash)"
+              echo "- \`SITE_URL\` — deployed base URL (e.g. \`https://northbound-dev.vercel.app\`, no trailing slash)"
               echo "- \`CRON_SECRET\` — must match the \`CRON_SECRET\` env var on the deployment"
               echo ""
               echo "Settings → Secrets and variables → Actions → New repository secret."
-              echo "Full walkthrough: \`docs/scheduled-scrape.md\`."
             } >> "$GITHUB_STEP_SUMMARY"
-            echo "::warning::SITE_URL and/or CRON_SECRET are not set — skipping scrape. See the job summary for setup."
+            echo "::warning::SITE_URL and/or CRON_SECRET are not set — skipping scrape."
             if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
               echo "::error::Configure SITE_URL and CRON_SECRET repo secrets before running this workflow."
               exit 1
@@ -62,14 +61,12 @@ jobs:
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             echo "sources=${{ github.event.inputs.sources }}" >> "$GITHUB_OUTPUT"
-          elif [ "${{ github.event.schedule }}" = "45 7 * * 0" ]; then
-            echo "sources=eventbrite meetup" >> "$GITHUB_OUTPUT"
           else
             echo "sources=luma mlh hackathon company" >> "$GITHUB_OUTPUT"
           fi
 
-      # One POST per source: each stays well inside the route's 300 s ceiling
-      # (meetup alone takes ~4 min) and one slow source can't starve the rest.
+      # One POST per source so a single slow source can't starve the rest; each free
+      # source finishes in a few seconds, comfortably under Vercel Hobby's ~60 s cap.
       - name: Trigger refresh per source
         if: steps.cfg.outputs.configured == 'true'
         run: |
@@ -80,7 +77,7 @@ jobs:
               -H "Authorization: Bearer $CRON_SECRET" \
               -H "Content-Type: application/json" \
               -d "{\"sources\":[\"$source\"]}" \
-              --max-time 360; then
+              --max-time 90; then
               echo "::warning::refresh failed for source: $source"
               failed=1
             fi
