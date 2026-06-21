@@ -168,7 +168,7 @@ const FilterBar = ({ cities, companies }: Props) => {
                 </button>
 
                 {open && (
-                    <div className="bg-popover border-border-dark card-shadow absolute left-0 top-full z-40 mt-2 w-[min(92vw,30rem)] rounded-xl border p-4">
+                    <div className="bg-popover border-border-dark card-shadow absolute left-0 top-full z-40 mt-2 w-[min(90vw,28rem)] rounded-xl border p-4 sm:left-auto sm:right-0">
                         <div className="grid grid-cols-2 gap-3 max-sm:grid-cols-1">
                             {select(
                                 'region',

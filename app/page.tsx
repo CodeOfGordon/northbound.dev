@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { Building2, Globe, MapPin, Trophy } from 'lucide-react';
 import ExploreBtn from '@/components/ExploreBtn';
 import EventGrid from '@/components/EventGrid';
+import Carousel from '@/components/Carousel';
 import SectionRail from '@/components/SectionRail';
 import SectionHeader from '@/components/SectionHeader';
 import EmptyState from '@/components/EmptyState';
@@ -101,7 +102,7 @@ const Page = async () => {
                             </div>
                         )}
 
-                        <EventGrid events={sections.company} />
+                        <Carousel events={sections.company} />
                     </section>
                 )}
 
@@ -115,7 +116,7 @@ const Page = async () => {
                             accent="primary"
                             href="/events?category=hackathon"
                         />
-                        <EventGrid events={sections.hackathons} />
+                        <Carousel events={sections.hackathons} />
                     </section>
                 )}
 

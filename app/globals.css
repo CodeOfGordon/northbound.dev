@@ -85,6 +85,25 @@
   @apply flex items-center justify-center;
 }
 
+/* Long lists: skip layout/paint for off-screen items — a big scroll-perf win with
+   many image cards. contain-intrinsic-size reserves space so the scrollbar is stable. */
+@utility cv-card {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 22rem;
+}
+@utility cv-row {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 5rem;
+}
+
+/* Horizontal rail with hidden scrollbar (home carousels). */
+@utility no-scrollbar {
+  scrollbar-width: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
 /* Mono micro-label — dates, counts, meta (the Linear/Vercel technical accent). */
 @utility label {
   @apply font-martian-mono text-[10px] font-medium uppercase tracking-[0.12em] text-light-200;

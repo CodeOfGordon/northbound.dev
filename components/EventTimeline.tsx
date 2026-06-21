@@ -46,7 +46,7 @@ const EventTimeline = ({ events, today, tomorrow }: Props) => {
                         </div>
                         <ul className="flex flex-1 list-none flex-col gap-2.5">
                             {dayEvents.map((event) => (
-                                <li key={event.slug}>
+                                <li key={event.slug} className="cv-row">
                                     <EventRow event={event} />
                                 </li>
                             ))}

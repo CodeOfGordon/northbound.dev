@@ -1,5 +1,5 @@
 import SectionHeader from '@/components/SectionHeader';
-import EventGrid from '@/components/EventGrid';
+import Carousel from '@/components/Carousel';
 import type { EventDoc } from '@/lib/events';
 
 interface Props {
@@ -16,7 +16,7 @@ const SectionRail = ({ title, subtitle, href, events, count }: Props) => {
     return (
         <section className="flex flex-col gap-5">
             <SectionHeader title={title} subtitle={subtitle} href={href} count={count} />
-            <EventGrid events={events} />
+            <Carousel events={events} />
         </section>
     );
 };

@@ -46,7 +46,7 @@ const EventCard = ({ event }: Props) => {
                 <EventImage src={image} alt={title} className="h-full w-full transition-transform duration-500 group-hover:scale-[1.03]" />
                 <div className="absolute inset-0 bg-gradient-to-t from-dark-100 via-dark-100/10 to-transparent" />
 
-                <div className="glass absolute left-3 top-3 flex flex-col items-center rounded-lg px-2.5 py-1 leading-none">
+                <div className="bg-dark-100/85 border-border-dark absolute left-3 top-3 flex flex-col items-center rounded-lg border px-2.5 py-1 leading-none">
                     <span className="label text-primary text-[9px]">{badge.month}</span>
                     <span className="font-martian-mono text-base font-semibold text-white">{badge.day}</span>
                 </div>
