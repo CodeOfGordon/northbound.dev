@@ -84,7 +84,7 @@ const EventPage = async ({ params }: { params: Params }) => {
 
             <div className="flex flex-col items-start gap-12 lg:flex-row">
                 <div className="flex w-full flex-[2] flex-col gap-8">
-                    <EventImage src={event.image} alt={event.title} className="max-h-[420px] w-full rounded-xl" />
+                    <EventImage src={event.image} alt={event.title} className="max-h-[420px] w-full rounded-xl" fill={false} />
 
                     <div className="flex flex-col gap-3">
                         <h3>About this event</h3>

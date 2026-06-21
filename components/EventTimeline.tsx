@@ -37,7 +37,7 @@ const EventTimeline = ({ events, today, tomorrow }: Props) => {
             {groups.map(({ date, events: dayEvents }) => {
                 const { label, sub } = dayHeader(date, today, tomorrow);
                 return (
-                    <div key={date} className="flex flex-col gap-3 sm:flex-row sm:gap-6">
+                    <div key={date} className="reveal flex flex-col gap-3 sm:flex-row sm:gap-6">
                         <div className="sm:w-28 sm:shrink-0">
                             <div className="flex items-baseline gap-2 sm:sticky sm:top-24 sm:flex-col sm:items-start sm:gap-0.5">
                                 <p className="font-schibsted-grotesk text-lg font-semibold leading-none">{label}</p>

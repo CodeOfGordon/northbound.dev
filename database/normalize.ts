@@ -104,11 +104,30 @@ export type CanonicalEvent = Omit<
  * Raw shape (verified live against api.lu.ma, 2026-06-10): the event object plus
  * entry-level calendar / hosts / ticket_info attached by the fetcher.
  */
+const CURRENCY_SYMBOL: Record<string, string> = { usd: '$', cad: 'CA$', eur: '€', gbp: '£', aud: 'A$' };
+
+/** Luma `ticket_info.price` is { cents, currency } (occasionally a number/string). */
+function lumaPrice(ticketInfo: any): string | undefined {
+    const p = ticketInfo?.price;
+    if (p == null) return undefined;
+    if (typeof p === 'string') return p || undefined;
+    const cents = typeof p === 'number' ? p : typeof p?.cents === 'number' ? p.cents : null;
+    if (cents == null || cents <= 0) return undefined;
+    const amount = (cents / 100).toFixed(2).replace(/\.00$/, '');
+    return `${CURRENCY_SYMBOL[String(p?.currency ?? 'usd').toLowerCase()] ?? '$'}${amount}`;
+}
+
 function mapLumaEvent(raw: any, source: Source, organizerOverride?: string): CanonicalEvent {
     const tz = raw.timezone ?? DEFAULT_TZ;
     const geo = raw.geo_address_info ?? {};
-    const online = raw.location_type !== 'offline';
+    const rawVenue = geo.full_address ?? geo.address ?? geo.sublocality ?? geo.city_state;
+    // Some Luma webinars are set as "offline" but put a registration URL in the
+    // address — treat a URL venue as online so it never surfaces as the location
+    // (and doesn't get a bogus default city).
+    const venueIsUrl = typeof rawVenue === 'string' && /^https?:\/\//i.test(rawVenue.trim());
+    const online = raw.location_type !== 'offline' || venueIsUrl;
     const city = canonicalCity(geo.city ?? (online ? 'Online' : DEFAULT_CITY));
+    const venue = online ? 'Online' : (rawVenue ?? 'TBA');
     const organizer = organizerOverride ?? raw.calendar?.name ?? raw.hosts?.[0]?.name ?? 'Luma';
     const title = String(raw.name).slice(0, 100);
     const text = `${title} ${organizer}`;
@@ -122,8 +141,8 @@ function mapLumaEvent(raw: any, source: Source, organizerOverride?: string): Can
         title,
         description: fallbackDescription(title, city, organizer),
         image: raw.cover_url ?? raw.social_image_url ?? '',
-        venue: geo.full_address ?? geo.address ?? geo.sublocality ?? geo.city_state ?? (online ? 'Online' : 'TBA'),
-        country: geo.country ?? (online ? 'Online' : DEFAULT_COUNTRY),
+        venue,
+        country: online ? 'Online' : (geo.country ?? DEFAULT_COUNTRY),
         city,
         date: normalizeDate(raw.start_at, tz),
         time: normalizeTime(raw.start_at, tz),
@@ -137,7 +156,7 @@ function mapLumaEvent(raw: any, source: Source, organizerOverride?: string): Can
         source,
         sourceId: raw.api_id,
         isFree: raw.ticket_info?.is_free ?? undefined,
-        price: raw.ticket_info?.price != null ? String(raw.ticket_info.price) : undefined,
+        price: lumaPrice(raw.ticket_info),
         category: mapCategory(text),
     };
 }

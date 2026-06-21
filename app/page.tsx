@@ -70,7 +70,7 @@ const Page = async () => {
 
                 {/* 1 — Primary: official company events */}
                 {sections.company.length > 0 && (
-                    <section className="flex flex-col gap-6">
+                    <section className="reveal flex flex-col gap-6">
                         <SectionHeader
                             title="Company events"
                             subtitle="Official — straight from each company's own events page"
@@ -112,7 +112,7 @@ const Page = async () => {
 
                 {/* 2 — Distinct focus: hackathons */}
                 {sections.hackathons.length > 0 && (
-                    <section className="flex flex-col gap-6">
+                    <section className="reveal flex flex-col gap-6">
                         <SectionHeader
                             title="Hackathons"
                             subtitle="MLH, NVIDIA & community hackathons — in person across Canada & the U.S., or online"
@@ -130,7 +130,7 @@ const Page = async () => {
 
                 {/* 3 — Canada-first local layer */}
                 {sections.canada.length > 0 && (
-                    <section className="flex flex-col gap-10">
+                    <section className="reveal flex flex-col gap-10">
                         <SectionHeader
                             title="In Canada"
                             subtitle="Company events, meetups & hackathons across the GTA, Ottawa & Quebec"
@@ -153,18 +153,20 @@ const Page = async () => {
 
                 {/* 4 — Secondary: United States */}
                 {sections.unitedStates.length > 0 && (
-                    <SectionRail
-                        title="In the United States"
-                        subtitle="Company dev events across the U.S."
-                        href="/events?region=us&source=company"
-                        events={sections.unitedStates}
-                        viewAllLabel="All U.S. events"
-                    />
+                    <div className="reveal">
+                        <SectionRail
+                            title="In the United States"
+                            subtitle="Company dev events across the U.S."
+                            href="/events?region=us&source=company"
+                            events={sections.unitedStates}
+                            viewAllLabel="All U.S. events"
+                        />
+                    </div>
                 )}
 
                 {/* 5 — Online, joinable from anywhere */}
                 {sections.online.length > 0 && (
-                    <section className="flex flex-col gap-6">
+                    <section className="reveal flex flex-col gap-6">
                         <SectionHeader
                             title="Online"
                             subtitle="Webinars, workshops & streams you can join from anywhere"

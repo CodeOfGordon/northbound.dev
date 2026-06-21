@@ -122,6 +122,36 @@
   box-shadow: 0 1px 0 0 rgba(255, 255, 255, 0.02) inset, 0 8px 30px -12px rgba(0, 0, 0, 0.6);
 }
 
+/*
+ * Subtle scroll-reveal — content fades/rises as it enters the viewport. Driven by a
+ * CSS scroll timeline (animation-timeline: view()), so it runs on the compositor with
+ * zero JS and never hijacks/janks the scroll. Gated behind @supports + no-reduced-
+ * motion: where unsupported, the longhand below never applies and content is just
+ * visible (base opacity 1).
+ */
+@keyframes reveal-up {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@supports (animation-timeline: view()) {
+  @media (prefers-reduced-motion: no-preference) {
+    .reveal {
+      animation-name: reveal-up;
+      animation-fill-mode: both;
+      animation-timing-function: linear;
+      animation-timeline: view();
+      animation-range: entry 0% entry 40%;
+    }
+  }
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;
