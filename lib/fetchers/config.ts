@@ -46,6 +46,21 @@ export const MLH_SEASON_URLS = [
 export const MLH_PROVINCES = new Set(['ON', 'Ontario', 'QC', 'Quebec', 'Québec']);
 
 /**
+ * lu.ma has no dedicated "hackathon" discover category — hackathons live inside the
+ * AI and Tech categories. The hackathon fetcher pulls these global feeds and keeps
+ * only hackathon-named events that are virtual or in CA/US. Category api_ids resolved
+ * via api.lu.ma/url?url=ai|tech (verified 2026-06).
+ */
+export const LUMA_HACKATHON_CATEGORIES = ['cat-ai', 'cat-tech'];
+
+/**
+ * Real hackathons are time-boxed; Devpost/DoraHacks also list perpetual "marathon"
+ * / template challenges with multi-month-to-year windows. Drop anything whose
+ * start→end span exceeds this so the feed stays event-like, not evergreen.
+ */
+export const MAX_HACKATHON_DAYS = 120;
+
+/**
  * Company sources — provider-agnostic: a company is pure config, mapped to one of
  * the provider adapters in company.ts. Generic providers (reusable across companies):
  *  - 'luma'  — any company Luma calendar (slug or direct calendar_api_id)

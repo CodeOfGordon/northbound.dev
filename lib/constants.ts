@@ -27,6 +27,7 @@ export const SOURCE_LABELS: Record<string, string> = {
     meetup: 'Meetup',
     mlh: 'MLH',
     company: 'Company',
+    hackathon: 'the hackathon site',
 };
 
 /**
@@ -44,7 +45,7 @@ export const LANE_LABELS: Record<Lane, string> = {
 
 export function laneOf(source: string, category?: string): Lane {
     if (source === 'company') return 'company';
-    if (source === 'mlh' || category === 'hackathon') return 'hackathon';
+    if (source === 'mlh' || source === 'hackathon' || category === 'hackathon') return 'hackathon';
     return 'local';
 }
 

@@ -4,7 +4,7 @@ import { deriveTags } from '@/lib/fetchers/relevance';
 import { stripHtml } from '@/lib/fetchers/util';
 import { classifyRegion, cleanTitle } from '@/lib/fetchers/geo';
 
-type Source = 'luma' | 'eventbrite' | 'meetup' | 'mlh' | 'company';
+type Source = 'luma' | 'eventbrite' | 'meetup' | 'mlh' | 'company' | 'hackathon';
 
 const DEFAULT_TZ = 'America/Toronto';
 const DEFAULT_COUNTRY = 'Canada';
@@ -112,6 +112,12 @@ function mapLumaEvent(raw: any, source: Source, organizerOverride?: string): Can
     const organizer = organizerOverride ?? raw.calendar?.name ?? raw.hosts?.[0]?.name ?? 'Luma';
     const title = String(raw.name).slice(0, 100);
     const text = `${title} ${organizer}`;
+    // Most Luma events expose `url` as a bare slug, but externally-hosted events
+    // (YC, Google, CerebralValley calendars) put a full URL there — don't prepend
+    // lu.ma to those, or the outbound link 404s (https://lu.ma/https://…).
+    const url = raw.url
+        ? /^https?:\/\//i.test(raw.url) ? raw.url : `https://lu.ma/${raw.url}`
+        : '';
     return {
         title,
         description: fallbackDescription(title, city, organizer),
@@ -127,7 +133,7 @@ function mapLumaEvent(raw: any, source: Source, organizerOverride?: string): Can
         mode: online ? 'online' : 'offline',
         organizer,
         tags: deriveTags(text),
-        url: `https://lu.ma/${raw.url}`,
+        url,
         source,
         sourceId: raw.api_id,
         isFree: raw.ticket_info?.is_free ?? undefined,
@@ -142,7 +148,7 @@ function mapLumaEvent(raw: any, source: Source, organizerOverride?: string): Can
  * instant-based (startISO + IANA timezone) or date-only (date/endDate parts, no
  * times — default 09:00 satisfies the schema without inventing precision).
  */
-function mapStdCompanyEvent(raw: any): CanonicalEvent {
+function mapStdCompanyEvent(raw: any, source: Source = 'company'): CanonicalEvent {
     const tz = raw.timezone ?? DEFAULT_TZ;
     const online = raw.mode ? raw.mode === 'online' : !!raw.online;
     const city = canonicalCity(raw.city ?? (online ? 'Online' : 'TBA'));
@@ -165,7 +171,7 @@ function mapStdCompanyEvent(raw: any): CanonicalEvent {
         organizer,
         tags: deriveTags(`${title} ${organizer} ${description.slice(0, 200)}`),
         url: raw.url,
-        source: 'company',
+        source,
         sourceId: raw.id != null ? `${raw._provider}:${raw.id}` : undefined,
         isFree: raw.isFree,
         price: raw.price,
@@ -320,6 +326,18 @@ function mapRaw(raw: any, source: Source): CanonicalEvent {
                 price: raw.cost || undefined,
                 category: mapCategory(title),
             };
+        }
+
+        case 'hackathon': {
+            // Dedicated hackathon sources (Devpost, DoraHacks, ETHGlobal) emit the
+            // std shape; lu.ma discover items reuse the Luma mapper. Either way the
+            // category is forced to 'hackathon' so they land in the Hackathons lane.
+            const doc =
+                raw._provider === 'luma'
+                    ? mapLumaEvent(raw, source, raw._company)
+                    : mapStdCompanyEvent(raw, source);
+            doc.category = 'hackathon';
+            return doc;
         }
     }
 }

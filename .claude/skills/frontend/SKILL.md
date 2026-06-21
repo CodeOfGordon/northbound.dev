@@ -5,7 +5,7 @@ description: Use when building the Next.js 16 UI - the event grid, filter bar, s
 
 # Frontend: event grid, filter bar, search, cards
 
-Builds the DevEvents browse UI on Next.js 16 (App Router). Source of truth for any
+Builds the Northbound browse UI on Next.js 16 (App Router). Source of truth for any
 Next.js API is the bundled docs at `node_modules/next/dist/docs/01-app` — this is a
 **modified Next.js 16.2.6**, so verify before trusting memory. Database is **MongoDB +
 Mongoose** (see the `database/` skill); never assume Supabase/Postgres.

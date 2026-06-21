@@ -1,4 +1,4 @@
-# CONTEXT — Tech Event Aggregator (DevEvents)
+# CONTEXT — Tech Event Aggregator (Northbound)
 
 > **Read this file first.** It is the project state snapshot every agent loads before
 > acting. It records the verified stack, what is already built, what is not built yet,
@@ -10,7 +10,7 @@
 
 ## 1. Purpose
 
-DevEvents scrapes upcoming **tech / AI / data developer and networking events plus
+Northbound scrapes upcoming **tech / AI / data developer and networking events plus
 hackathons** from **Luma, Eventbrite, Meetup, and company sites** (RBC, Google/GDG, AWS,
 Databricks, MLH), **normalizes** them into one unified feed, and lets users
 **filter/search** and **add events to Google / Outlook / Apple / Yahoo / iCal calendars**.

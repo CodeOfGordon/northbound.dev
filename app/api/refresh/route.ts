@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import connectDB from '@/database/mongodb';
+import { ScrapeMeta } from '@/database';
 import { runScrape } from '@/lib/scrape';
 
 export const runtime = 'nodejs';
@@ -22,12 +23,30 @@ export async function POST(request: NextRequest) {
     await connectDB();
     const result = await runScrape({ sources });
 
+    // Record run metadata for the "Updated X ago" freshness indicator. Per-source
+    // timestamps merge via dot-notation so a single-source run doesn't clobber the
+    // others. Best-effort — a bookkeeping failure must not fail the scrape.
+    const ranAt = new Date();
+    try {
+        const set: Record<string, unknown> = {
+            lastRunAt: ranAt,
+            lastSources: result.sources,
+            lastUpserted: result.upsertedCount,
+            lastModified: result.modifiedCount,
+            lastErrors: result.errors,
+        };
+        for (const s of result.sources) set[`perSource.${s}`] = ranAt.toISOString();
+        await ScrapeMeta.updateOne({ key: 'scrape' }, { $set: set, $setOnInsert: { key: 'scrape' } }, { upsert: true });
+    } catch (e) {
+        console.warn('refresh: failed to write scrape meta —', (e as Error).message);
+    }
+
     return NextResponse.json({
         ok: true,
         sources: result.sources,
         upserted: result.upsertedCount,
         modified: result.modifiedCount,
         errors: result.errors,
-        ranAt: new Date().toISOString(),
+        ranAt: ranAt.toISOString(),
     });
 }

@@ -1,18 +1,21 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
-import EventGrid from '@/components/EventGrid';
+import EventRow from '@/components/EventRow';
+import EventTimeline from '@/components/EventTimeline';
 import EmptyState from '@/components/EmptyState';
 import FilterBar from '@/components/FilterBar';
 import SearchBox from '@/components/SearchBox';
 import Pagination from '@/components/Pagination';
 import CompanyDirectory from '@/components/CompanyDirectory';
-import { distinctCities, queryEvents, upcomingCompanies } from '@/lib/events';
+import { distinctCities, queryEvents, todayInToronto, upcomingCompanies } from '@/lib/events';
 import { cn } from '@/lib/utils';
 
+export const dynamic = 'force-dynamic';
+
 export const metadata: Metadata = {
-    title: 'All events — DevEvents',
+    title: 'All events — Northbound',
     description:
-        'Filter and search official company dev events, hackathons and community tech events across Canada & the U.S.',
+        'Filter and search official company dev events, hackathons and community tech events across Canada, the U.S. and online.',
 };
 
 type SearchParams = Record<string, string | string[] | undefined>;
@@ -37,7 +40,7 @@ const LANE_META: Record<Lane, { title: string; subtitle: string }> = {
 
 function laneFrom(source?: string, category?: string): Lane {
     if (source === 'company') return 'company';
-    if (category === 'hackathon' || source === 'mlh') return 'hackathon';
+    if (category === 'hackathon' || source === 'mlh' || source === 'hackathon') return 'hackathon';
     if (source === 'local') return 'local';
     return 'all';
 }
@@ -49,11 +52,12 @@ const EventsPage = async ({ searchParams }: { searchParams: Promise<SearchParams
     const category = first(sp.category);
     const region = first(sp.region);
     const organizer = first(sp.organizer);
+    const q = first(sp.q);
     const lane = laneFrom(source, category);
 
     const [result, cities, companyRows] = await Promise.all([
         queryEvents({
-            q: first(sp.q),
+            q,
             city: first(sp.city),
             mode: first(sp.mode),
             category,
@@ -81,46 +85,53 @@ const EventsPage = async ({ searchParams }: { searchParams: Promise<SearchParams
     }
 
     const meta = LANE_META[lane];
+    const today = todayInToronto();
+    const tomorrow = new Date(Date.parse(today) + 86_400_000).toISOString().slice(0, 10);
 
     return (
         <section className="flex flex-col gap-6">
             <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-                <div>
+                <div className="flex flex-col gap-1.5">
                     <h1 className="text-4xl max-sm:text-3xl">{meta.title}</h1>
-                    <p className="text-light-200 mt-2 text-sm">
-                        {result.total} upcoming event{result.total === 1 ? '' : 's'}
+                    <p className="text-light-200 text-sm">
+                        <span className="text-light-100 font-medium">{result.total}</span> upcoming event
+                        {result.total === 1 ? '' : 's'}
                         {organizer ? ` from ${organizer}` : ''}
-                        {first(sp.q) ? ` for “${first(sp.q)}”` : ` · ${meta.subtitle}`}
+                        {q ? ` for “${q}”` : ` · ${meta.subtitle}`}
                     </p>
                 </div>
                 <SearchBox />
             </div>
 
-            {/* Lane tabs — structure comes from which lane you're in, not the filters */}
-            <nav className="flex flex-wrap gap-2">
-                {LANE_TABS.map(({ key, label, href }) => (
-                    <Link
-                        key={key}
-                        href={href}
-                        className={cn(
-                            'rounded-full border px-4 py-1.5 text-sm font-medium transition',
-                            lane === key
-                                ? 'border-primary bg-primary/10 text-primary'
-                                : 'border-dark-200 text-light-200 hover:border-primary/50 hover:text-light-100',
-                        )}
-                    >
-                        {label}
-                    </Link>
-                ))}
-            </nav>
+            {/* Lane segmented control + compact filters on one calm row */}
+            <div className="flex flex-wrap items-center justify-between gap-3">
+                <nav className="border-border-dark bg-dark-100/60 inline-flex w-fit items-center gap-1 rounded-lg border p-1">
+                    {LANE_TABS.map(({ key, label, href }) => (
+                        <Link key={key} href={href} className={cn('seg', lane === key && 'seg-active')}>
+                            {label}
+                        </Link>
+                    ))}
+                </nav>
+
+                <FilterBar cities={cities} companies={companies} />
+            </div>
 
             {lane === 'company' && <CompanyDirectory counts={counts} active={organizer} />}
 
-            <FilterBar cities={cities} companies={companies} />
-
             {result.items.length ? (
                 <>
-                    <EventGrid events={result.items} />
+                    {q ? (
+                        // Search results aren't date-ordered — a flat row list reads better than date rails.
+                        <ul className="flex list-none flex-col gap-2.5">
+                            {result.items.map((event) => (
+                                <li key={event.slug}>
+                                    <EventRow event={event} />
+                                </li>
+                            ))}
+                        </ul>
+                    ) : (
+                        <EventTimeline events={result.items} today={today} tomorrow={tomorrow} />
+                    )}
                     <Pagination page={result.page} total={result.total} limit={result.limit} searchParams={flat} />
                 </>
             ) : (

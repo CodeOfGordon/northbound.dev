@@ -1,21 +1,27 @@
 import Link from 'next/link';
-import { ArrowRight, Globe, MapPin, Trophy } from 'lucide-react';
+import { Building2, Globe, MapPin, Trophy } from 'lucide-react';
 import ExploreBtn from '@/components/ExploreBtn';
 import EventGrid from '@/components/EventGrid';
 import SectionRail from '@/components/SectionRail';
+import SectionHeader from '@/components/SectionHeader';
 import EmptyState from '@/components/EmptyState';
+import FreshnessBadge from '@/components/FreshnessBadge';
 import { getHomeSections, queryEvents } from '@/lib/events';
+import { getScrapeStatus } from '@/lib/meta';
 
 export const dynamic = 'force-dynamic'; // live DB reads — never prerender at build
 
 /**
  * Home hierarchy (deliberate): official company events are the hero content,
  * hackathons a distinct second focus, then a Canada-first local layer with the
- * United States and online events as secondary sections. North-America scoped —
- * company events outside CA/US are filtered out of the pipeline (see lib/scrape).
+ * United States and online events as secondary sections. North-America scoped.
  */
 const Page = async () => {
-    const [sections, all] = await Promise.all([getHomeSections(), queryEvents({ limit: 1 })]);
+    const [sections, all, status] = await Promise.all([
+        getHomeSections(),
+        queryEvents({ limit: 1 }),
+        getScrapeStatus(),
+    ]);
     const empty =
         !sections.company.length &&
         !sections.hackathons.length &&
@@ -23,30 +29,37 @@ const Page = async () => {
         !sections.unitedStates.length &&
         !sections.online.length;
 
+    const topCompanies = sections.companies.slice(0, 10);
+
     return (
-        <section className="flex flex-col gap-20">
-            <div id="home" className="flex flex-col items-center pt-10">
-                <h1 className="text-center">
-                    Official Dev Events <br /> Across North America
+        <section className="flex flex-col gap-24">
+            {/* Hero */}
+            <div id="home" className="flex flex-col items-center pt-12 text-center max-sm:pt-6">
+                <span className="label border-border-dark bg-dark-100/60 rounded-full border px-3 py-1 normal-case">
+                    {sections.companies.length}+ companies · Canada-first · North America
+                </span>
+                <h1 className="text-gradient mt-6 max-w-3xl text-balance">
+                    Official dev events, hackathons &amp; meetups — one clean feed
                 </h1>
                 <p className="subheading">
-                    Google, AWS, Microsoft, NVIDIA, YC and 20+ more — official company events and
-                    hackathons, Canada-first with the U.S. and online too. No events from overseas to
-                    wade through.
+                    Google, AWS, Microsoft, NVIDIA, YC and 20+ more — official company events and hackathons,
+                    Canada-first with the U.S. and online too. No overseas noise to wade through.
                 </p>
 
-                <div className="mt-8 flex flex-wrap items-center justify-center gap-4">
-                    <ExploreBtn />
+                <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
                     <Link
                         href="/events"
-                        className="bg-primary hover:bg-primary/90 rounded-full px-8 py-3.5 font-semibold text-black transition max-sm:w-full max-sm:text-center"
+                        className="bg-primary hover:bg-primary/90 text-primary-foreground rounded-full px-7 py-3 text-sm font-semibold transition-colors max-sm:w-full"
                     >
                         Browse all {all.total > 0 ? `${all.total} events` : 'events'}
                     </Link>
+                    <ExploreBtn />
                 </div>
+
+                {status.lastRunAt && <FreshnessBadge lastRunAt={status.lastRunAt} variant="bare" className="mt-6" />}
             </div>
 
-            <div id="events" className="flex flex-col gap-16 scroll-mt-24">
+            <div id="events" className="flex scroll-mt-24 flex-col gap-20">
                 {empty && (
                     <EmptyState
                         title="The feed is warming up"
@@ -57,35 +70,34 @@ const Page = async () => {
                 {/* 1 — Primary: official company events */}
                 {sections.company.length > 0 && (
                     <section className="flex flex-col gap-6">
-                        <div className="flex items-end justify-between gap-4">
-                            <div>
-                                <h2 className="font-schibsted-grotesk text-3xl font-bold max-sm:text-2xl">
-                                    Company events
-                                </h2>
-                                <p className="text-light-200 mt-1 text-sm">
-                                    Official, from each company&apos;s own events page — conferences, workshops,
-                                    webinars and launch events
-                                </p>
-                            </div>
-                            <Link
-                                href="/events?source=company"
-                                className="text-primary flex shrink-0 items-center gap-1 text-sm font-semibold hover:underline"
-                            >
-                                View all <ArrowRight className="size-4" aria-hidden />
-                            </Link>
-                        </div>
+                        <SectionHeader
+                            title="Company events"
+                            subtitle="Official — straight from each company's own events page"
+                            icon={Building2}
+                            accent="amber"
+                            count={sections.companies.length}
+                            href="/events?source=company"
+                        />
 
-                        {sections.companies.length > 1 && (
+                        {topCompanies.length > 1 && (
                             <div className="flex flex-wrap gap-2">
-                                {sections.companies.map(({ name, count }) => (
+                                {topCompanies.map(({ name, count }) => (
                                     <Link
                                         key={name}
-                                        href={`/events?organizer=${encodeURIComponent(name)}`}
-                                        className="pill hover:border-primary/60 hover:text-primary transition"
+                                        href={`/events?source=company&organizer=${encodeURIComponent(name)}`}
+                                        className="pill hover:border-primary/60 hover:text-primary"
                                     >
                                         {name} <span className="text-light-200">· {count}</span>
                                     </Link>
                                 ))}
+                                {sections.companies.length > topCompanies.length && (
+                                    <Link
+                                        href="/events?source=company"
+                                        className="pill text-light-200 hover:text-primary hover:border-primary/60"
+                                    >
+                                        +{sections.companies.length - topCompanies.length} more
+                                    </Link>
+                                )}
                             </div>
                         )}
 
@@ -95,23 +107,14 @@ const Page = async () => {
 
                 {/* 2 — Distinct focus: hackathons */}
                 {sections.hackathons.length > 0 && (
-                    <section className="border-primary/20 bg-primary/[0.04] flex flex-col gap-5 rounded-2xl border p-6 max-sm:p-4">
-                        <div className="flex items-end justify-between gap-4">
-                            <div>
-                                <h2 className="font-schibsted-grotesk flex items-center gap-2.5 text-3xl font-bold max-sm:text-2xl">
-                                    <Trophy className="text-primary size-7" aria-hidden /> Hackathons
-                                </h2>
-                                <p className="text-light-200 mt-1 text-sm">
-                                    MLH, NVIDIA and community hackathons — in person across Canada &amp; the U.S., or join online
-                                </p>
-                            </div>
-                            <Link
-                                href="/events?category=hackathon"
-                                className="text-primary flex shrink-0 items-center gap-1 text-sm font-semibold hover:underline"
-                            >
-                                View all <ArrowRight className="size-4" aria-hidden />
-                            </Link>
-                        </div>
+                    <section className="flex flex-col gap-6">
+                        <SectionHeader
+                            title="Hackathons"
+                            subtitle="MLH, NVIDIA & community hackathons — in person across Canada & the U.S., or online"
+                            icon={Trophy}
+                            accent="primary"
+                            href="/events?category=hackathon"
+                        />
                         <EventGrid events={sections.hackathons} />
                     </section>
                 )}
@@ -119,15 +122,12 @@ const Page = async () => {
                 {/* 3 — Canada-first local layer */}
                 {sections.canada.length > 0 && (
                     <section className="flex flex-col gap-10">
-                        <div>
-                            <h2 className="font-schibsted-grotesk flex items-center gap-2.5 text-2xl font-bold">
-                                <MapPin className="text-primary size-6" aria-hidden /> In Canada
-                            </h2>
-                            <p className="text-light-200 mt-1 text-sm">
-                                Company events, meetups and hackathons across the GTA, Ottawa &amp; Quebec
-                            </p>
-                        </div>
-
+                        <SectionHeader
+                            title="In Canada"
+                            subtitle="Company events, meetups & hackathons across the GTA, Ottawa & Quebec"
+                            icon={MapPin}
+                            accent="primary"
+                        />
                         {sections.canada.map(({ city, events }) => (
                             <SectionRail
                                 key={city}
@@ -152,23 +152,14 @@ const Page = async () => {
 
                 {/* 5 — Online, joinable from anywhere */}
                 {sections.online.length > 0 && (
-                    <section className="border-dark-200 flex flex-col gap-5 border-t pt-12">
-                        <div className="flex items-end justify-between gap-4">
-                            <div>
-                                <h2 className="font-schibsted-grotesk flex items-center gap-2.5 text-2xl font-bold">
-                                    <Globe className="text-primary size-6" aria-hidden /> Online
-                                </h2>
-                                <p className="text-light-200 mt-1 text-sm">
-                                    Webinars, workshops and streams you can join from anywhere
-                                </p>
-                            </div>
-                            <Link
-                                href="/events?region=online"
-                                className="text-primary flex shrink-0 items-center gap-1 text-sm font-semibold hover:underline"
-                            >
-                                View all <ArrowRight className="size-4" aria-hidden />
-                            </Link>
-                        </div>
+                    <section className="flex flex-col gap-6">
+                        <SectionHeader
+                            title="Online"
+                            subtitle="Webinars, workshops & streams you can join from anywhere"
+                            icon={Globe}
+                            accent="primary"
+                            href="/events?region=online"
+                        />
                         <EventGrid events={sections.online} />
                     </section>
                 )}

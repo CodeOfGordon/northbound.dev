@@ -14,9 +14,9 @@ type Params = Promise<{ slug: string }>;
 export async function generateMetadata({ params }: { params: Params }): Promise<Metadata> {
     const { slug } = await params; // Next 16: params is a Promise
     const event = await getEventBySlug(slug);
-    if (!event) return { title: 'Event not found — DevEvents' };
+    if (!event) return { title: 'Event not found — Northbound' };
     return {
-        title: `${event.title} — DevEvents`,
+        title: `${event.title} — Northbound`,
         description: event.description.slice(0, 160),
     };
 }
@@ -106,16 +106,14 @@ const EventPage = async ({ params }: { params: Params }) => {
                     {tags.length > 0 && (
                         <div className="flex flex-wrap gap-2">
                             {tags.map((tag) => (
-                                <span key={tag} className="border-dark-200 text-light-200 rounded-full border px-3 py-1 text-sm">
-                                    #{tag}
-                                </span>
+                                <span key={tag} className="chip text-light-200">#{tag}</span>
                             ))}
                         </div>
                     )}
                 </div>
 
                 <aside className="w-full flex-1 lg:sticky lg:top-24">
-                    <div className="bg-dark-100 border-dark-200 card-shadow flex w-full flex-col gap-5 rounded-xl border px-5 py-6">
+                    <div className="bg-dark-100/70 border-border-dark card-shadow flex w-full flex-col gap-5 rounded-xl border px-5 py-6">
                         <div className="text-light-100 flex flex-col gap-3 text-base">
                             <span className="flex items-center gap-3">
                                 <CalendarDays className="text-primary size-5 shrink-0" aria-hidden />

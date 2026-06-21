@@ -1,6 +1,6 @@
 # Gotchas & Known Issues
 
-Project-specific traps for the Tech Event Aggregator (DevEvents). Read this before
+Project-specific traps for the Tech Event Aggregator (Northbound). Read this before
 touching scraping, dedup, the calendar button, MongoDB, or Next.js route handlers.
 
 > Stack reality check: this is a **heavily modified Next.js 16.2.6** whose APIs differ
@@ -42,7 +42,7 @@ touching scraping, dedup, the calendar button, MongoDB, or Next.js route handler
 
 ### Company platform feeds (`lib/fetchers/companies/` — all live-verified 2026-06-10/11)
 - **curl is NOT a valid smoke test for Tesla or Databricks.** Both sit behind TLS-fingerprinting CDNs (Akamai / Cloudflare) that 403 every curl request regardless of headers, while Node's native fetch passes with a browser-ish UA. Test with `npx tsx`, never curl. Conversely the production runtime (Node fetch) is exactly the client that works.
-- **NVIDIA + Figma robots.txt blanket-block AI-crawler UA tokens** (anthropic-ai, GPTBot, ...). Those adapters send `BROWSER_UA` from `companies/shared.ts`, not the DevEventsBot UA in `util.ts`.
+- **NVIDIA + Figma robots.txt blanket-block AI-crawler UA tokens** (anthropic-ai, GPTBot, ...). Those adapters send `BROWSER_UA` from `companies/shared.ts`, not the NorthboundBot UA in `util.ts`.
 - **Google devsite randomly machine-translates** `developers.google.com/events` (observed th/pt-BR/ko on back-to-back requests), which translates the h3 slugs used as ids. Pin `?hl=en` + `accept-language: en-US`. Gallery dates are free text without year ("June 9-10 (Frankfurt) | In-person") — year inference + Dec→Jan wrap handled in the adapter; explicit ", YYYY" suffixes win.
 - **Microsoft Reactor API** is `/reactor/api/events` with NO culture prefix (`/en-us/reactor/api/...` 404s). 10 items/page regardless of the UI's 9. Instants are true UTC but there is **no per-event IANA zone** — events render in UTC wall-clock. `formats=In person` filter value has a space. `isSeries` items are skipped.
 - **Tesla dates are faux-UTC**: `dates[].startDate` is the local calendar date encoded at `T00:00:00+00:00` — never treat it as an instant; the real zone is `locations[0].timezone` and the real clock time only exists in the human `hours` string ("11 AM - 5 PM"). lat/lng params are REQUIRED (412 without); events are radius-scoped per city centroid (registry lists Toronto + Montreal).

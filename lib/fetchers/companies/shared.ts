@@ -79,6 +79,49 @@ const MONTHS: Record<string, number> = {
     jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12,
 };
 
+/**
+ * Devpost's `submission_period_dates` is a display string, not ISO —
+ * "Jun 14 - 21, 2026", "May 19 - Aug 17, 2026", or "Dec 30, 2025 - Jan 5, 2026".
+ * The year sits after the comma and applies to both ends; the right side may omit
+ * the month, inheriting the left's. Returns {start,end} YYYY-MM-DD, or null.
+ */
+export function parseDevpostRange(input: string): { start: string; end: string } | null {
+    const parts = input.trim().split(/\s+-\s+/);
+    if (parts.length !== 2) return null;
+    const [left, right] = parts;
+
+    const endYearM = right.match(/(\d{4})/) ?? left.match(/(\d{4})/);
+    if (!endYearM) return null;
+    const endYear = endYearM[1];
+    const startYear = (left.match(/(\d{4})/) ?? endYearM)[1];
+
+    const lm = left.match(/([A-Za-z]+)\s+(\d{1,2})/);
+    if (!lm) return null;
+    const startMonth = monthNumber(lm[1]);
+    if (!startMonth) return null;
+    const startDay = parseInt(lm[2], 10);
+
+    const rWithMonth = right.match(/([A-Za-z]+)\s+(\d{1,2})/);
+    const rDayOnly = right.match(/^\s*(\d{1,2})/);
+    let endMonth: number | null;
+    let endDay: number;
+    if (rWithMonth) {
+        endMonth = monthNumber(rWithMonth[1]);
+        endDay = parseInt(rWithMonth[2], 10);
+    } else if (rDayOnly) {
+        endMonth = startMonth;
+        endDay = parseInt(rDayOnly[1], 10);
+    } else {
+        return null;
+    }
+    if (!endMonth) return null;
+
+    return {
+        start: `${startYear}-${pad(startMonth)}-${pad(startDay)}`,
+        end: `${endYear}-${pad(endMonth)}-${pad(endDay)}`,
+    };
+}
+
 /** 'June' / 'JUL' / 'sept' → 1-12, or null. */
 export function monthNumber(name: string): number | null {
     return MONTHS[name.trim().slice(0, 3).toLowerCase()] ?? null;

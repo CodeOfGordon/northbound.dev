@@ -23,14 +23,14 @@ const SearchBox = () => {
     };
 
     return (
-        <form onSubmit={submit} className="relative w-full sm:max-w-md" role="search">
+        <form onSubmit={submit} className="relative w-full sm:max-w-sm" role="search">
             <Search className="text-light-200 absolute left-3 top-1/2 size-4 -translate-y-1/2" aria-hidden />
             <input
                 type="search"
                 value={value}
                 onChange={(e) => setValue(e.target.value)}
                 placeholder="Search events, topics, organizers…"
-                className="bg-dark-100 border-dark-200 placeholder:text-light-200/60 focus:border-primary w-full rounded-lg border py-2.5 pl-9 pr-4 text-sm focus:outline-none"
+                className="bg-dark-100 border-border-dark placeholder:text-light-200/60 focus:border-primary/60 focus:ring-primary/20 w-full rounded-lg border py-2.5 pl-9 pr-4 text-sm transition-colors focus:outline-none focus:ring-2"
                 aria-label="Search events"
             />
         </form>

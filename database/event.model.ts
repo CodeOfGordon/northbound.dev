@@ -22,7 +22,7 @@ export interface IEvent extends Document {
     organizer: string;
     tags: string[];
     url: string;                  // canonical link to the source event page
-    source: 'luma' | 'eventbrite' | 'meetup' | 'mlh' | 'company';
+    source: 'luma' | 'eventbrite' | 'meetup' | 'mlh' | 'company' | 'hackathon';
     sourceId?: string;            // platform-native id, when available
     fingerprint?: string;         // dedup key — set by the scraper upsert path
     isFree?: boolean;
@@ -119,7 +119,7 @@ const EventSchema = new Schema<IEvent>(
     endTime:  { type: String },
     timezone: { type: String, default: 'America/Toronto' },
     url:      { type: String, required: [true, 'Source URL is required'], trim: true },
-    source:   { type: String, enum: ['luma', 'eventbrite', 'meetup', 'mlh', 'company'], required: [true, 'Source is required'] },
+    source:   { type: String, enum: ['luma', 'eventbrite', 'meetup', 'mlh', 'company', 'hackathon'], required: [true, 'Source is required'] },
     sourceId: { type: String, trim: true },
     fingerprint: { type: String },
     isFree:   { type: Boolean },
@@ -166,8 +166,8 @@ export function generateSlug(title: string): string {
         .replace(/^-|-$/g, ''); // Remove leading/trailing hyphens
 }
 
-// Create unique index on slug for better performance
-EventSchema.index({ slug: 1 }, { unique: true });
+// (slug's unique index is declared via `unique: true` on the field above —
+// re-declaring it here caused a duplicate-index warning, so it's intentionally omitted.)
 
 // Dedup key — sparse so hand-entered events without a fingerprint don't collide on null
 EventSchema.index({ fingerprint: 1 }, { unique: true, sparse: true });

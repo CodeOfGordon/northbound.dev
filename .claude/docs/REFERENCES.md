@@ -1,4 +1,4 @@
-# REFERENCES — Tech Event Aggregator (DevEvents)
+# REFERENCES — Tech Event Aggregator (Northbound)
 
 A curated link index for this project. Use these instead of guessing package names,
 commands, or APIs from memory. URLs here are verified.
