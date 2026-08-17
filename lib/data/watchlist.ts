@@ -29,7 +29,10 @@ export interface WatchlistEntry {
 export const WATCHLIST: WatchlistEntry[] = [
     { name: 'Cal Hacks', host: 'calhacks.io', city: 'San Francisco', country: 'United States', school: 'UC Berkeley' },
     { name: 'PennApps', host: 'pennapps.com', city: 'Philadelphia', country: 'United States', school: 'University of Pennsylvania' },
-    { name: 'BigRed//Hacks', host: 'bigredhacks.com', city: 'Ithaca', country: 'United States', school: 'Cornell University', knownNext: { start: '2026-10-02', end: '2026-10-04' } }, // also MLH 2026-season-listed — fingerprint dedups
+    // BigRed//Hacks (Cornell) deliberately NOT listed: MLH season data covers it, and
+    // title drift ("BigRed//Hacks 2026" vs ours) defeats fingerprint dedup — a
+    // watchlist entry created a visible duplicate on first live run. Re-add only
+    // if it ever drops out of MLH.
     { name: 'SproutGT', host: 'sprout.hack.gt', city: 'Atlanta', country: 'United States', school: 'Georgia Tech', note: 'Open to Georgia Tech students only.' },
     // hackharvard.io 301s here since ~2026 — track the canonical host. Dates per official site/aggregators 2026-08.
     { name: 'HackHarvard', host: 'hhuh.io', city: 'Cambridge', country: 'United States', school: 'Harvard University', knownNext: { start: '2026-10-16', end: '2026-10-18' } },

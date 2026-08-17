@@ -278,8 +278,123 @@ config line (now with an `industry`).
 
 ---
 
+## ADR-018 — Hackathon application/travel schema + field-ownership wipe safety (2026-08-16)
+
+**Decision**: Event docs gain `applicationStatus` (`open|closed|not_yet|unknown`) +
+`applicationDeadline` (YYYY-MM-DD, lexical — I5), both **scrape-owned** (emitted only by
+mappers that truly know them: Devpost `open_state`); `notifiedOpenAt` (Date, **digest-owned**);
+and an `enrichment` subdocument (**enrichment-script-owned**: host, checkedAt, source
+site|curated, fetchStatus, application{status,deadline,evidence}, travel{status,amount,evidence}).
+**Ownership rule**: the scrape upsert `$set: doc` overwrites exactly the paths present in
+`CanonicalEvent` — so `enrichment` and `notifiedOpenAt` are excluded from the `Omit<>` in
+normalize.ts and MUST stay excluded; that exclusion is the entire wipe-safety mechanism
+(verified live: MLH rescrape modified 55 docs, enrichment subdocs survived intact).
+`lib/hackathon.ts` (`applicationSignal`/`travelSignal`) is the only merge point components use.
+No new indexes. Date presets gained `quarter` (+92d) / `half` (+183d); the hackathon lane
+defaults to a 6-month month-grouped FORWARD calendar (`includeOngoing` off there — dozens of
+already-started online challenges clamped into "today" and buried the planning view).
+
+---
+
+## ADR-019 — Hackathon source widening: MLH US, Devpost in-person, watchlist (2026-08-16)
+
+- **MLH**: in-person events now kept for ALL of the US (CA stays narrowed to ON/QC) — the
+  travel-reimbursement feature is about flying to the majors. Season URLs moved to
+  `www.mlh.com` (mlh.io 302s there). Hackathon lane grew ~46 docs on first run.
+- **Devpost**: second slice `challenge_type[]=in-person` alongside online; `open_state`
+  open|upcoming → `applicationStatus:'open'` (registration is possible in both — the
+  submission window starting later doesn't block joining; revisit if wrong, it's one line);
+  `submission_period_dates` end → `applicationDeadline`. In-person items must classify
+  positively to US/CA via `classifyRegion` in the fetcher — free-text venue names default
+  to region UNKNOWN which the generic gate KEEPS, and that leaked University of Sydney into
+  the feed on the first live run. Precision over recall.
+- **New `watchlist` source** (`lib/fetchers/watchlist.ts` + `lib/data/watchlist.ts`): curated
+  named hackathons absent from MLH/aggregators (HackMIT, Cal Hacks, PennApps, BigRed//Hacks,
+  SproutGT, HackHarvard→hhuh.io, HooHacks, YHack, TreeHacks, McHacks). Polls each official
+  site nightly; extracts announced dates from title+meta+body (most are SPA blanks — raw
+  hackmit.org HTML is 14 chars of text), with curated `knownNext` fallback dates, all guarded
+  to FUTURE dates only. **No next-year guess for yearless date strings** — a stale page
+  ("January 17-18" on mchacks.ca) fabricated a 2027 edition on the first live run; removed.
+  MLH city strings get trailing commas stripped in the MLH mapper only (a global
+  canonicalCity change would re-fingerprint stored docs, e.g. "Washington, D.C.").
+  Duplicates with MLH listings dedup via the frozen fingerprint.
+
+---
+
+## ADR-020 — Enrichment stage runs in GitHub Actions, writes to Atlas directly (2026-08-16)
+
+`scripts/enrich-hackathons.mjs` (+ `scripts/hackathon-overrides.json`) fetches each in-person
+US/CA hackathon's own site + FAQ and writes ONLY the `enrichment` subdoc (see ADR-018).
+**Why not a Vercel route**: per-site fetches of arbitrary hackathon sites are slow/flaky and
+the Hobby function ceiling is unresolved (~60s assumption, W6); the GH runner has free
+minutes and no cap; direct-to-Atlas .mjs has precedent (diagnostics scripts). **Budgets**:
+25 hosts/run (dispatch input `enrich_budget` for backfills), ≤2 pages/host (landing + one
+same-host FAQ link), 10s timeouts, 1.5s inter-request sleep, no retries; staleness cadence
+3d (event <60d out) / 7d (else) / 7d backoff on fetch_failed/blocked. **Classifiers**:
+application closed→not_yet→open precedence with evidence snippets (±120 chars, ≤280);
+travel has a mention-gate and **silence maps to 'unknown', never 'no'**; verb stems not
+literals ("providing" missed by 'provide' — live uofthacks.com miss, fixed). Hostname-keyed
+curated overrides carry travel policy ONLY (application state is time-varying and would rot).
+New trust surface: `MONGODB_URI` repo secret; Atlas network access must allow GH runners.
+
+---
+
+## ADR-021 — Daily interest digest via Resend HTTP API, at-least-once (2026-08-16)
+
+One nightly email to `DIGEST_EMAIL` when something matched: (A) new events since cursor
+matching `config/interests.ts` (typed rules in git — no auth exists, so no web form; a
+`minDaysOut` field keeps hackathons months-out per gordon's ask), (B) applications-now-open,
+(C) deadline reminders at exactly {7,3,1} days (stateless). Cursor = `meta` singleton
+`{key:'digest'}` (`lastDigestAt` = considered-through, advances on empty runs;
+`lastSentAt` = same-day rerun guard). **At-least-once**: cursor + markers advance only after
+Resend confirms — failure = duplicate tomorrow, never a silent miss. First run initializes
+without emailing history. Email = single 600px table, inline styles, explicit light palette
+(Gmail forced-dark inverts sanely), plain-text fallback, links to site detail pages +
+outbound Apply. **No `resend` npm dependency** — raw fetch to `api.resend.com/emails`
+(~15 lines) keeps package.json unchanged; sender `onboarding@resend.dev` (unverified-domain
+sends only reach the Resend account owner → account must be created as the recipient email).
+
+---
+
+## ADR-022 — Applications-open notification contract (`notifiedOpenAt`) (2026-08-16)
+
+The digest notifies about the STATE "open and not yet told" — `status=open` (scrape field
+OR `enrichment.application.status`, deadline-not-passed) AND `notifiedOpenAt` absent —
+then stamps `notifiedOpenAt` after a confirmed send. Chosen over enrichment-stamped
+transition timestamps: self-defending against nightly re-stamps, workflow reruns, and
+at-least-once resends. Contract lines: (1) `applicationStatus`/`applicationDeadline` live on
+the Event doc; (2) deadlines are YYYY-MM-DD; (3) nothing may `$unset` `notifiedOpenAt`
+EXCEPT (4) the enrichment script's courtesy clear on a real open→closed transition so a
+later re-open re-notifies. Enumerated write surface (G2): `meta` upsert `{key:'digest'}`,
+`events.updateMany` `$set notifiedOpenAt`, enrichment's `updateOne` `$set enrichment`
+(+ the courtesy `$unset`). No deletes anywhere.
+
+---
+
+## ADR-023 — Nightly job chain + audit housekeeping (2026-08-16)
+
+`scrape.yml` is now three chained jobs: **scrape** (curl per source; `watchlist` added to
+the source list) → **enrich** (`needs: scrape, if: always()`) → **digest**
+(`needs: [scrape, enrich], if: always()`) — the digest must see the night's fresh docs and
+status flips; partial upstream failure must not suppress the rest; same-day guard makes
+reruns safe. Rejected: separate workflows/`workflow_run` (split visibility) and a later
+cron guess (races). Housekeeping approved by gordon 2026-08-16: `ogl` dependency removed
+(zero imports); `/api/events` now includes `hackathon`+`watchlist` sources and projects out
+`_id`/`fingerprint`/`sourceId`/`__v`; slug lookups lowercase on BOTH paths; unknown
+venue/country store `''` going forward (city fallback untouched — fingerprint input);
+`audience` dropped from the read path (0/707 docs, zero writers — schema field retained).
+
+---
+
 ## Known follow-ups / tech debt
 - ~~`database/mongodb.ts` stray `v8` import~~ — already removed.
 - ~~`normalizeDate()` UTC day-shift~~ — **fixed 2026-06-10**: `normalizeDate`/`normalizeTime` extract wall-clock parts in the event's IANA timezone (`Intl.DateTimeFormat`); `event.model.ts` reuses the same helpers.
 - 8 stale Atlas docs predate the city/entity normalization fixes (city `Montréal`, one `&#8211;` title) — delete or let them age out; re-scrapes create the canonical versions.
 - Meetup fetcher is the one source not yet live-verified end-to-end (Apify free credit exhausted mid-validation; item shape + plumbing verified — see gotchas).
+- 4 stray docs from the 2026-08-16 live-fire test await approved deletion (MCP is readonly;
+  the delete was classifier-blocked): slug `mchacks-2027-01-17` (fabricated date),
+  city `"Atlanta,"` (superseded by the clean re-scrape), titles `SYNCS HACK 2026` +
+  `DevLeague 2026` (foreign in-person Devpost leaks; the fetcher gate now blocks new ones).
+- First real digest send will carry a one-time backlog of ~49 "applications open" rows
+  (every currently-open hackathon gets its marker stamped then) — subsequent digests are
+  incremental.
