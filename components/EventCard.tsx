@@ -6,6 +6,7 @@ import { Building2, MapPin } from 'lucide-react';
 import EventImage from '@/components/EventImage';
 import { HIDDEN_TAGS, LANE_ACCENT, LANE_LABELS, laneOf } from '@/lib/constants';
 import { dateBadge, eventFlag, formatCityLabel, formatDateRange, formatPrice, formatTime } from '@/lib/format';
+import { applicationSignal, travelSignal } from '@/lib/hackathon';
 import { cn } from '@/lib/utils';
 import type { EventDoc } from '@/lib/events';
 
@@ -25,6 +26,11 @@ const EventCard = ({ event }: Props) => {
     const flag = eventFlag(event);
     const priceInfo = formatPrice(isFree, price);
     const badge = dateBadge(date);
+    // Hackathons: application state replaces the (uninformative — all free)
+    // "Free" badge; a known travel-aid policy earns a chip.
+    const appSignal = applicationSignal(event);
+    const showApp = lane === 'hackathon' && appSignal.status !== 'unknown';
+    const travel = travelSignal(event);
     const visibleTags = event.tags.filter((t) => !HIDDEN_TAGS.includes(t)).slice(0, 2);
 
     return (
@@ -69,13 +75,26 @@ const EventCard = ({ event }: Props) => {
                     </span>
                 </div>
 
-                {(visibleTags.length > 0 || priceInfo.kind !== 'unknown') && (
+                {(visibleTags.length > 0 || priceInfo.kind !== 'unknown' || showApp || travel?.status === 'yes') && (
                     <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
                         {visibleTags.map((tag) => (
                             <span key={tag} className="chip text-light-200 text-[11px]">{tag}</span>
                         ))}
-                        {priceInfo.kind === 'free' && <span className="text-primary ml-auto text-xs font-semibold">Free</span>}
-                        {priceInfo.kind === 'paid' && <span className="text-light-200 ml-auto text-xs">{priceInfo.label}</span>}
+                        {travel?.status === 'yes' && <span className="chip text-light-100 text-[11px]">Travel aid</span>}
+                        {showApp ? (
+                            appSignal.status === 'open' ? (
+                                <span className="text-primary ml-auto text-xs font-semibold">Apps open</span>
+                            ) : (
+                                <span className="text-light-200 ml-auto text-xs">
+                                    {appSignal.status === 'closed' ? 'Apps closed' : 'Apps soon'}
+                                </span>
+                            )
+                        ) : (
+                            <>
+                                {priceInfo.kind === 'free' && <span className="text-primary ml-auto text-xs font-semibold">Free</span>}
+                                {priceInfo.kind === 'paid' && <span className="text-light-200 ml-auto text-xs">{priceInfo.label}</span>}
+                            </>
+                        )}
                     </div>
                 )}
             </div>

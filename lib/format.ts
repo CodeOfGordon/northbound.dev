@@ -145,6 +145,12 @@ export function formatPrice(isFree?: boolean, price?: string): { label: string; 
     return { label: '', kind: 'unknown' };
 }
 
+/** Add N days to a YYYY-MM-DD string via UTC date-part math (timezone-safe). */
+export function addDaysISO(ymd: string, n: number): string {
+    const [y, m, d] = ymd.split('-').map(Number);
+    return new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10);
+}
+
 /** Month-group header for the horizon timeline: { label: 'September', sub: '2026' }. */
 export function monthHeader(ym: string): { label: string; sub: string } {
     const [y, m] = ym.split('-').map(Number);

@@ -8,6 +8,7 @@ import SearchBox from '@/components/SearchBox';
 import Pagination from '@/components/Pagination';
 import CompanyDirectory from '@/components/CompanyDirectory';
 import { type FeedLane, laneFromParams } from '@/lib/constants';
+import { addDaysISO } from '@/lib/format';
 import { distinctCities, queryEvents, todayInToronto, upcomingCompanies } from '@/lib/events';
 import { cn } from '@/lib/utils';
 
@@ -33,7 +34,7 @@ const LANE_TABS: { key: FeedLane; label: string; href: string }[] = [
 const LANE_META: Record<FeedLane, { title: string; subtitle: string }> = {
     all: { title: 'All events', subtitle: 'Everything we track across North America' },
     company: { title: 'Company events', subtitle: 'Official dev events from the companies we track' },
-    hackathon: { title: 'Hackathons', subtitle: 'MLH, NVIDIA and community hackathons — in person or online' },
+    hackathon: { title: 'Hackathons', subtitle: 'MLH, Devpost & university hackathons over the next 6 months — apply while applications are open' },
     local: { title: 'Local events', subtitle: 'Community meetups & events from Luma, Eventbrite and Meetup' },
 };
 
@@ -47,6 +48,16 @@ const EventsPage = async ({ searchParams }: { searchParams: Promise<SearchParams
     const q = first(sp.q);
     const lane = laneFromParams(source, category);
 
+    // Hackathon lane defaults to a 6-month horizon grouped by month — you need
+    // to hear about a hackathon while applications are open, not the week it
+    // starts. Explicit from/to (preset chips) or a search override the default.
+    // The default is a FORWARD calendar: already-started online challenges are
+    // excluded (includeOngoing off) — dozens of them would clamp into the
+    // current month and bury the planning view. The "Upcoming" preset chip
+    // still surfaces them (category default keeps includeOngoing on there).
+    const horizonDefault = lane === 'hackathon' && !first(sp.from) && !first(sp.to) && !q;
+    const monthGrouped = lane === 'hackathon' && !q;
+
     const [result, cities, companyRows] = await Promise.all([
         queryEvents({
             q,
@@ -58,9 +69,13 @@ const EventsPage = async ({ searchParams }: { searchParams: Promise<SearchParams
             region,
             price: first(sp.price),
             from: first(sp.from),
-            to: first(sp.to),
+            to: horizonDefault ? addDaysISO(todayInToronto(), 183) : first(sp.to),
             tag: first(sp.tag),
             page: Number(first(sp.page)) || 1,
+            // Month-grouped horizon reads as a survey, not a feed — pull the full
+            // query cap per page so later months actually appear on page one.
+            limit: monthGrouped ? 60 : undefined,
+            includeOngoing: horizonDefault ? false : undefined,
         }),
         distinctCities(region),
         upcomingCompanies(),
@@ -122,7 +137,12 @@ const EventsPage = async ({ searchParams }: { searchParams: Promise<SearchParams
                             ))}
                         </ul>
                     ) : (
-                        <EventTimeline events={result.items} today={today} tomorrow={tomorrow} />
+                        <EventTimeline
+                            events={result.items}
+                            today={today}
+                            tomorrow={tomorrow}
+                            granularity={monthGrouped ? 'month' : 'day'}
+                        />
                     )}
                     <Pagination page={result.page} total={result.total} limit={result.limit} searchParams={flat} />
                 </>

@@ -6,6 +6,7 @@ import { Building2, MapPin } from 'lucide-react';
 import EventImage from '@/components/EventImage';
 import { LANE_ACCENT, LANE_LABELS, laneOf } from '@/lib/constants';
 import { eventFlag, formatCityLabel, formatDateRange, formatPrice, formatTime } from '@/lib/format';
+import { applicationSignal } from '@/lib/hackathon';
 import { cn } from '@/lib/utils';
 import type { EventDoc } from '@/lib/events';
 
@@ -21,6 +22,10 @@ const EventRow = ({ event }: Props) => {
     const flag = eventFlag(event);
     const priceInfo = formatPrice(isFree, price);
     const place = formatCityLabel(event);
+    // Hackathons: the application state is the signal that matters (they're all
+    // free) — when known it takes the badge slot instead of "Free".
+    const appSignal = applicationSignal(event);
+    const showApp = lane === 'hackathon' && appSignal.status !== 'unknown';
 
     return (
         <Link
@@ -62,8 +67,20 @@ const EventRow = ({ event }: Props) => {
                     <span className={cn('size-1.5 rounded-full', accent.dot)} />
                     <span className="max-sm:hidden">{LANE_LABELS[lane]}</span>
                 </span>
-                {priceInfo.kind === 'free' && <span className="text-primary text-xs font-semibold">Free</span>}
-                {priceInfo.kind === 'paid' && <span className="text-light-200 text-xs">{priceInfo.label}</span>}
+                {showApp ? (
+                    appSignal.status === 'open' ? (
+                        <span className="text-primary text-xs font-semibold">Apps open</span>
+                    ) : (
+                        <span className="text-light-200 text-xs">
+                            {appSignal.status === 'closed' ? 'Apps closed' : 'Apps soon'}
+                        </span>
+                    )
+                ) : (
+                    <>
+                        {priceInfo.kind === 'free' && <span className="text-primary text-xs font-semibold">Free</span>}
+                        {priceInfo.kind === 'paid' && <span className="text-light-200 text-xs">{priceInfo.label}</span>}
+                    </>
+                )}
             </div>
         </Link>
     );

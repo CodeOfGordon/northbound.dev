@@ -1,12 +1,13 @@
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
-import { Building2, CalendarDays, Clock, Globe, MapPin, Ticket } from 'lucide-react';
+import { Building2, CalendarDays, Clock, Globe, MapPin, Plane, Send, Ticket } from 'lucide-react';
 import EventImage from '@/components/EventImage';
 import AddToCalendar from '@/components/AddToCalendar';
 import RegisterButton from '@/components/RegisterButton';
 import EventGrid from '@/components/EventGrid';
 import { CATEGORY_LABELS, HIDDEN_TAGS, LANE_LABELS, laneOf, MODE_LABELS } from '@/lib/constants';
-import { formatDate, formatLocation, formatPrice, formatTime, formatVenue, isPlaceholderLoc } from '@/lib/format';
+import { formatDate, formatLocation, formatPrice, formatTime, formatVenue, isPlaceholderLoc, timeAgo } from '@/lib/format';
+import { applicationSignal, travelSignal } from '@/lib/hackathon';
 import { getEventBySlug, getRelatedEvents } from '@/lib/events';
 
 type Params = Promise<{ slug: string }>;
@@ -63,6 +64,8 @@ const EventPage = async ({ params }: { params: Params }) => {
 
     const related = await getRelatedEvents(event);
     const tags = event.tags.filter((t) => !HIDDEN_TAGS.includes(t));
+    const appSignal = applicationSignal(event);
+    const travel = travelSignal(event);
 
     const chips = [
         event.category && CATEGORY_LABELS[event.category],
@@ -167,7 +170,46 @@ const EventPage = async ({ params }: { params: Params }) => {
                                     </span>
                                 );
                             })()}
+                            {event.category === 'hackathon' && appSignal.status !== 'unknown' && (
+                                <span className="flex items-center gap-3">
+                                    <Send className="text-primary size-5 shrink-0" aria-hidden />
+                                    <span>
+                                        {appSignal.status === 'open' && 'Applications open'}
+                                        {appSignal.status === 'closed' && 'Applications closed'}
+                                        {appSignal.status === 'not_yet' && 'Applications open soon'}
+                                        {appSignal.status === 'open' && appSignal.deadline && (
+                                            <span className="text-light-200 block text-sm">
+                                                apply by {formatDate(appSignal.deadline)}
+                                            </span>
+                                        )}
+                                    </span>
+                                </span>
+                            )}
                         </div>
+
+                        {travel && (
+                            <div className="border-border-dark flex flex-col gap-1.5 border-t pt-4">
+                                <span className="text-light-100 flex items-start gap-3 text-base">
+                                    <Plane className="text-primary mt-0.5 size-5 shrink-0" aria-hidden />
+                                    <span>
+                                        {travel.status === 'yes' &&
+                                            `Travel reimbursement offered${travel.amount ? ` · ${travel.amount}` : ''}`}
+                                        {travel.status === 'no' && 'No travel reimbursement'}
+                                        {travel.status === 'unknown' && (
+                                            <span className="text-light-200">Travel support not listed — check the event site</span>
+                                        )}
+                                    </span>
+                                </span>
+                                {travel.evidence && (
+                                    <p className="text-light-200 line-clamp-3 pl-8 text-xs">“{travel.evidence}”</p>
+                                )}
+                                {travel.checkedAt && (
+                                    <p className="label pl-8 normal-case">
+                                        checked {timeAgo(travel.checkedAt)} · {travel.curated ? 'curated' : 'from the event site'}
+                                    </p>
+                                )}
+                            </div>
+                        )}
 
                         <RegisterButton event={event} />
                         <AddToCalendar event={event} />
