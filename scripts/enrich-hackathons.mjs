@@ -40,6 +40,19 @@ const ONLY_HOST = (() => {
 const REFRESH_UNKNOWN = args.includes('--refresh-unknown');
 /** Re-check every host regardless of cadence — for after a classifier fix. */
 const REFRESH_ALL = args.includes('--refresh-all');
+/**
+ * Hard wall-clock budget. Rendering + archive lookups make per-host cost highly
+ * variable (a slow site can burn a minute on its own), and an unbounded nightly
+ * job is an operational hazard — one CI run sat at 60+ minutes before this
+ * existed. Whatever doesn't fit is simply picked up by the next run, since the
+ * staleness cadence already makes progress resumable.
+ */
+const MAX_RUNTIME_MS = (() => {
+    const i = args.indexOf('--max-minutes');
+    const n = i >= 0 ? parseFloat(args[i + 1]) : NaN;
+    return (Number.isFinite(n) && n > 0 ? n : 12) * 60_000;
+})();
+const startedAt = Date.now();
 const NO_RENDER = args.includes('--no-render');
 
 const UA = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36';
@@ -482,7 +495,13 @@ async function main() {
         `${byHost.size} stale hosts, enriching ${hosts.length} (budget ${BUDGET}${DRY_RUN ? ', dry-run' : ''})`);
 
     const summary = [];
+    let deferred = 0;
     for (const host of hosts) {
+        if (Date.now() - startedAt > MAX_RUNTIME_MS) {
+            deferred = hosts.length - summary.length;
+            console.log(`Time budget (${Math.round(MAX_RUNTIME_MS / 60_000)}m) reached — ${deferred} host(s) deferred to the next run.`);
+            break;
+        }
         const docs = byHost.get(host);
         const anchorDate = docs.map((d) => d.date).sort()[0];
         let fetchStatus = 'ok';
@@ -621,7 +640,10 @@ async function main() {
     }
 
     console.table(summary);
-    if (skippedForBudget > 0) console.log(`NOTE: ${skippedForBudget} stale host(s) skipped for budget — they'll be picked up on later runs.`);
+    if (skippedForBudget + deferred > 0) {
+        console.log(`NOTE: ${skippedForBudget + deferred} stale host(s) not processed this run — they'll be picked up on later runs.`);
+    }
+    console.log(`Ran ${Math.round((Date.now() - startedAt) / 1000)}s.`);
     if (DRY_RUN) console.log('Dry run: no writes performed.');
     if (browserPromise) await (await browserPromise)?.close().catch(() => {});
     await mongoose.disconnect();
