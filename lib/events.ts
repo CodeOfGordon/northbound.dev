@@ -56,6 +56,10 @@ export interface EventQuery {
     from?: string;
     to?: string;
     tag?: string;
+    /** 'open' — only events whose applications are currently open (hackathon lane filter). */
+    applications?: string;
+    /** 'yes' | 'no' — travel-reimbursement signal from the enrichment pass. */
+    travel?: string;
     page?: number;
     limit?: number;
     /**
@@ -151,6 +155,9 @@ export async function queryEvents(params: EventQuery = {}): Promise<EventPage> {
     if (params.tag) filter.tags = params.tag;
     if (params.price === 'free') filter.isFree = true;
     if (params.price === 'paid') filter.isFree = false;
+    if (params.travel === 'yes' || params.travel === 'no') {
+        filter['enrichment.travel.status'] = params.travel;
+    }
 
     // Date scope. Default: starts on/after `from` (chronological feed). For
     // hackathons, also include still-running events (endDate >= from) whose start is
@@ -162,13 +169,29 @@ export async function queryEvents(params: EventQuery = {}): Promise<EventPage> {
     // search is active, fall back to a plain date range (search is relevance-sorted,
     // not date-grouped, so dropping still-running past-start events is acceptable).
     const includeOngoing = !q && (params.includeOngoing ?? params.category === 'hackathon');
+
+    // Extra AND-composed clauses (each may carry its own $or, so they can't sit
+    // directly on the filter next to the ongoing $or).
+    const and: QueryFilter<IEvent>[] = [];
+    if (params.applications === 'open') {
+        // Open per the scrape field OR the enrichment scan…
+        if (q) filter.applicationStatus = 'open'; // $text forbids $or — scrape field only
+        else and.push({ $or: [{ applicationStatus: 'open' }, { 'enrichment.application.status': 'open' }] });
+        // …and the deadline (either owner's) must not have passed. $not passes
+        // docs where the field is absent, which is what we want.
+        filter.applicationDeadline = { $not: { $lt: from } };
+        filter['enrichment.application.deadline'] = { $not: { $lt: from } };
+    }
+
     if (includeOngoing) {
         const notEnded = [{ date: { $gte: from } }, { endDate: { $gte: from } }];
-        if (params.to) filter.$and = [{ date: { $lte: params.to } }, { $or: notEnded }];
-        else filter.$or = notEnded;
+        if (params.to) and.push({ date: { $lte: params.to } }, { $or: notEnded });
+        else and.push({ $or: notEnded });
     } else {
         filter.date = { $gte: from, ...(params.to ? { $lte: params.to } : {}) };
     }
+    if (and.length === 1 && !and[0].$or) Object.assign(filter, and[0]);
+    else if (and.length) filter.$and = and;
 
     if (q) filter.$text = { $search: q };
 

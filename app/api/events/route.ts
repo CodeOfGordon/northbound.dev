@@ -71,6 +71,15 @@ export async function GET(request: NextRequest) {
     if (price === 'paid') filter.isFree = false;
 
     const q = sp.get('q')?.trim();
+
+    // Application/travel signals (parity with lib/events.ts semantics).
+    if (sp.get('applications') === 'open') {
+        if (q) filter.applicationStatus = 'open'; // $text forbids $or
+        else filter.$or = [{ applicationStatus: 'open' }, { 'enrichment.application.status': 'open' }];
+    }
+    const travel = sp.get('travel');
+    if (travel === 'yes' || travel === 'no') filter['enrichment.travel.status'] = travel;
+
     if (q) filter.$text = { $search: q };
 
     // pagination — clamp untrusted input

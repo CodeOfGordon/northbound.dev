@@ -134,6 +134,9 @@ const FilterBar = ({ cities, companies }: Props) => {
     if (mode) chips.push({ key: 'mode', label: MODE_LABELS[mode] ?? mode, clear: { mode: '' } });
     const price = sp.get('price');
     if (price) chips.push({ key: 'price', label: price === 'free' ? 'Free' : 'Paid', clear: { price: '' } });
+    if (sp.get('applications') === 'open') chips.push({ key: 'applications', label: 'Apps open', clear: { applications: '' } });
+    const travel = sp.get('travel');
+    if (travel) chips.push({ key: 'travel', label: travel === 'yes' ? 'Travel aid' : 'No travel aid', clear: { travel: '' } });
     const preset = currentPreset(new URLSearchParams(sp.toString()));
     if (preset) chips.push({ key: 'date', label: PRESET_LABEL[preset], clear: { from: '', to: '' } });
 
@@ -192,6 +195,12 @@ const FilterBar = ({ cities, companies }: Props) => {
 
                             {(lane === 'all' || lane === 'local') &&
                                 select('price', 'Price', [['', 'Any price'], ['free', 'Free'], ['paid', 'Paid']], sp.get('price') ?? '')}
+
+                            {lane === 'hackathon' &&
+                                select('applications', 'Applications', [['', 'Any status'], ['open', 'Open now']], sp.get('applications') ?? '')}
+
+                            {lane === 'hackathon' &&
+                                select('travel', 'Travel support', [['', 'Any'], ['yes', 'Reimbursement offered'], ['no', 'Not offered']], sp.get('travel') ?? '')}
 
                             {select(
                                 'date',

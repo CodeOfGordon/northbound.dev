@@ -2,10 +2,10 @@
 
 import Link from 'next/link';
 import posthog from 'posthog-js';
-import { Building2, CalendarRange, MapPin, Send } from 'lucide-react';
+import { Building2, MapPin } from 'lucide-react';
 import EventImage from '@/components/EventImage';
 import { LANE_ACCENT, LANE_LABELS, laneOf } from '@/lib/constants';
-import { dateBadge, eventFlag, formatCityLabel, formatDateRange, formatPrice, formatTime, monthDay, siteLogo } from '@/lib/format';
+import { eventFlag, formatCityLabel, formatDateRange, formatPrice, formatTime, monthDay, siteLogo } from '@/lib/format';
 import { applicationSignal } from '@/lib/hackathon';
 import { cn } from '@/lib/utils';
 import type { EventDoc } from '@/lib/events';
@@ -13,13 +13,19 @@ import type { EventDoc } from '@/lib/events';
 interface Props {
     event: EventDoc;
     /**
-     * Lead with the event's date in the left column (month-grouped feeds,
-     * where the rail only pins the month). Hackathon rows do this regardless.
+     * Month-grouped feeds: the rail only pins the month, so rows carry explicit
+     * Event / Apply-by columns. Hackathon rows do this regardless.
      */
     showDate?: boolean;
 }
 
-/** Dense list row for the timeline feed (lu.ma style): time · thumb · title · meta · lane. */
+/**
+ * Dense list row for the timeline feed (lu.ma style). Two shapes:
+ *  - day-grouped:  time · thumb · title+meta · (apply-by col) · lane
+ *  - month-grouped/hackathon: thumb · title+meta · EVENT col · APPLY BY col · lane
+ * The labeled fixed-width columns exist because "when it runs" and "when to
+ * apply by" are both dates — unlabeled they're indistinguishable.
+ */
 const EventRow = ({ event, showDate = false }: Props) => {
     const { title, slug, image, organizer, city, date, endDate, time, mode, source, category, isFree, price } = event;
     const lane = laneOf(source, category);
@@ -31,13 +37,12 @@ const EventRow = ({ event, showDate = false }: Props) => {
     // free) — when known it takes the badge slot instead of "Free".
     const appSignal = applicationSignal(event);
     const showApp = lane === 'hackathon' && appSignal.status !== 'unknown';
-    // Date-first rows: hackathons always (stored times are placeholder 9:00s),
-    // and any row inside a month-grouped feed. The start date becomes a compact
-    // corner-badge (same idiom as EventCard); the full range + apply-by deadline
-    // sit side by side in the meta line, each labeled by its icon.
-    const dateFirst = lane === 'hackathon' || showDate;
-    const badge = dateBadge(date);
-    const showTime = !dateFirst || (lane !== 'hackathon' && mode !== 'online');
+    const applyBy = appSignal.status !== 'closed' ? appSignal.deadline : undefined;
+    // Column mode: hackathon rows always (stored times are placeholder 9:00s and
+    // the horizon rail only pins the month); other rows join when they carry an
+    // application deadline so the info is never hidden.
+    const columns = lane === 'hackathon' || showDate;
+    const showTime = lane !== 'hackathon' && mode !== 'online';
 
     return (
         <Link
@@ -48,12 +53,7 @@ const EventRow = ({ event, showDate = false }: Props) => {
                 accent.hover,
             )}
         >
-            {dateFirst ? (
-                <span className="flex w-16 shrink-0 flex-col items-center leading-none max-sm:hidden">
-                    <span className="label text-primary text-[9px]">{badge.month}</span>
-                    <span className="font-martian-mono text-foreground text-base font-semibold">{badge.day}</span>
-                </span>
-            ) : (
+            {!columns && (
                 <span className="text-light-100 font-martian-mono w-16 shrink-0 text-center text-xs max-sm:hidden">
                     {mode === 'online' ? 'Online' : formatTime(time)}
                 </span>
@@ -66,25 +66,12 @@ const EventRow = ({ event, showDate = false }: Props) => {
                     {title}
                 </h3>
                 <div className="text-light-200 mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-sm">
-                    {dateFirst ? (
-                        <span className="text-light-100 flex items-center gap-1.5 whitespace-nowrap">
-                            <CalendarRange className="size-3.5 shrink-0" aria-hidden />
-                            {formatDateRange(date, endDate)}
-                            {showTime && ` · ${formatTime(time)}`}
-                        </span>
-                    ) : (
-                        <span className="font-martian-mono text-light-100 text-xs sm:hidden">
-                            {formatDateRange(date, endDate)} · {mode === 'online' ? 'Online' : formatTime(time)}
-                        </span>
-                    )}
-                    {appSignal.deadline && appSignal.status !== 'closed' && (
-                        // Any lane — some non-hackathon events carry an application
-                        // deadline too. Hidden once the deadline passes (forced closed).
-                        <span className="text-light-100 flex items-center gap-1.5 whitespace-nowrap">
-                            <Send className="size-3.5 shrink-0" aria-hidden />
-                            Apply by {monthDay(appSignal.deadline)}
-                        </span>
-                    )}
+                    {/* Mobile: the columns are hidden, so dates collapse into the meta line. */}
+                    <span className="font-martian-mono text-light-100 text-xs sm:hidden">
+                        {columns
+                            ? `${formatDateRange(date, endDate)}${applyBy ? ` · apply by ${monthDay(applyBy)}` : ''}`
+                            : `${formatDateRange(date, endDate)} · ${mode === 'online' ? 'Online' : formatTime(time)}`}
+                    </span>
                     <span className="flex items-center gap-1.5">
                         <Building2 className="size-3.5 shrink-0" aria-hidden />
                         <span className="truncate">{organizer}</span>
@@ -97,7 +84,32 @@ const EventRow = ({ event, showDate = false }: Props) => {
                 </div>
             </div>
 
-            <div className="flex shrink-0 flex-col items-end gap-1.5">
+            {columns ? (
+                <>
+                    <span className="flex w-28 shrink-0 flex-col gap-1 max-sm:hidden">
+                        <span className="label text-[9px]">Event</span>
+                        <span className="font-martian-mono text-light-100 flex flex-col text-xs leading-snug">
+                            <span className="whitespace-nowrap">{formatDateRange(date, endDate)}</span>
+                            {showTime && <span className="text-light-200 whitespace-nowrap">{formatTime(time)}</span>}
+                        </span>
+                    </span>
+                    <span className="flex w-20 shrink-0 flex-col gap-1 max-sm:hidden">
+                        <span className="label text-[9px]">Apply by</span>
+                        <span className={cn('font-martian-mono text-xs', applyBy ? 'text-light-100' : 'text-light-200')}>
+                            {applyBy ? monthDay(applyBy) : '—'}
+                        </span>
+                    </span>
+                </>
+            ) : (
+                applyBy && (
+                    <span className="flex w-20 shrink-0 flex-col gap-1 max-sm:hidden">
+                        <span className="label text-[9px]">Apply by</span>
+                        <span className="font-martian-mono text-light-100 text-xs">{monthDay(applyBy)}</span>
+                    </span>
+                )
+            )}
+
+            <div className="flex w-24 shrink-0 flex-col items-end gap-1.5">
                 <span className={cn('label flex items-center gap-1.5', accent.text)}>
                     <span className={cn('size-1.5 rounded-full', accent.dot)} />
                     <span className="max-sm:hidden">{LANE_LABELS[lane]}</span>

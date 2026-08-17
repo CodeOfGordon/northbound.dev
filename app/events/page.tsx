@@ -68,6 +68,8 @@ const EventsPage = async ({ searchParams }: { searchParams: Promise<SearchParams
             organizer,
             region,
             price: first(sp.price),
+            applications: first(sp.applications),
+            travel: first(sp.travel),
             from: first(sp.from),
             to: horizonDefault ? addDaysISO(todayInToronto(), 183) : first(sp.to),
             tag: first(sp.tag),
