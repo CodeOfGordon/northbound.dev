@@ -12,6 +12,11 @@ interface Props {
     fill?: boolean;
     /** Target render width — scraped images are resized to this so they're cheap to paint. */
     w?: number;
+    /**
+     * Identity mark shown centered on the placeholder when there's no cover
+     * image (or it failed) — typically the event site's logo via siteLogo().
+     */
+    fallbackLogo?: string;
 }
 
 /**
@@ -30,13 +35,28 @@ function resized(src: string, w: number): string {
  * cascade of re-renders that would stutter the smooth scroll. State changes only on
  * error (rare). Images fade in over a static placeholder.
  */
-const EventImage = ({ src, alt, className, fill = true, w = 640 }: Props) => {
+const EventImage = ({ src, alt, className, fill = true, w = 640, fallbackLogo }: Props) => {
     const [stage, setStage] = useState<'proxy' | 'original' | 'failed'>('proxy');
 
     if (!src || stage === 'failed') {
         return (
             <div className={cn('flex-center from-dark-200 via-dark-100 to-black bg-gradient-to-br', className)}>
-                <CalendarRange className="text-primary/40 size-10" aria-hidden />
+                {fallbackLogo ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                        src={fallbackLogo}
+                        alt=""
+                        loading="lazy"
+                        decoding="async"
+                        // Favicon-sized identity mark, not a stretched cover. DOM-only
+                        // error handling (same rationale as the fade below).
+                        onError={(e) => (e.currentTarget.style.display = 'none')}
+                        className="max-h-[45%] max-w-[35%] rounded-md opacity-90"
+                        aria-hidden
+                    />
+                ) : (
+                    <CalendarRange className="text-primary/40 size-10" aria-hidden />
+                )}
             </div>
         );
     }

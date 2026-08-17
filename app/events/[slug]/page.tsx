@@ -6,7 +6,7 @@ import AddToCalendar from '@/components/AddToCalendar';
 import RegisterButton from '@/components/RegisterButton';
 import EventGrid from '@/components/EventGrid';
 import { CATEGORY_LABELS, HIDDEN_TAGS, LANE_LABELS, laneOf, MODE_LABELS } from '@/lib/constants';
-import { formatDate, formatLocation, formatPrice, formatTime, formatVenue, isPlaceholderLoc, timeAgo } from '@/lib/format';
+import { formatDate, formatLocation, formatPrice, formatTime, formatVenue, isPlaceholderLoc, siteLogo, timeAgo } from '@/lib/format';
 import { applicationSignal, travelSignal } from '@/lib/hackathon';
 import { getEventBySlug, getRelatedEvents } from '@/lib/events';
 
@@ -95,7 +95,11 @@ const EventPage = async ({ params }: { params: Params }) => {
 
             <div className="flex flex-col items-start gap-12 lg:flex-row">
                 <div className="flex w-full flex-[2] flex-col gap-8">
-                    <EventImage src={event.image} alt={event.title} w={1280} className="max-h-[420px] w-full rounded-xl" fill={false} />
+                    {event.image ? (
+                        <EventImage src={event.image} alt={event.title} w={1280} className="max-h-[420px] w-full rounded-xl" fill={false} />
+                    ) : (
+                        <EventImage src="" alt={event.title} fallbackLogo={siteLogo(event.url)} className="h-48 w-full rounded-xl" />
+                    )}
 
                     <div className="flex flex-col gap-3">
                         <h3>About this event</h3>

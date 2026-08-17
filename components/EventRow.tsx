@@ -5,7 +5,7 @@ import posthog from 'posthog-js';
 import { Building2, MapPin } from 'lucide-react';
 import EventImage from '@/components/EventImage';
 import { LANE_ACCENT, LANE_LABELS, laneOf } from '@/lib/constants';
-import { eventFlag, formatCityLabel, formatDateRange, formatPrice, formatTime } from '@/lib/format';
+import { eventFlag, formatCityLabel, formatDateRange, formatPrice, formatTime, monthDay, siteLogo } from '@/lib/format';
 import { applicationSignal } from '@/lib/hackathon';
 import { cn } from '@/lib/utils';
 import type { EventDoc } from '@/lib/events';
@@ -36,11 +36,20 @@ const EventRow = ({ event }: Props) => {
                 accent.hover,
             )}
         >
-            <span className="text-light-100 font-martian-mono w-16 shrink-0 text-center text-xs max-sm:hidden">
-                {mode === 'online' ? 'Online' : formatTime(time)}
-            </span>
+            {lane === 'hackathon' ? (
+                // Hackathons are date-scoped (stored times are placeholder 9:00s) and the
+                // month-grouped horizon rail only gives the month — show the days here.
+                <span className="text-light-100 font-martian-mono flex w-16 shrink-0 flex-col text-center text-xs leading-tight max-sm:hidden">
+                    <span>{monthDay(date)}</span>
+                    {endDate && endDate !== date && <span className="text-light-200">– {monthDay(endDate)}</span>}
+                </span>
+            ) : (
+                <span className="text-light-100 font-martian-mono w-16 shrink-0 text-center text-xs max-sm:hidden">
+                    {mode === 'online' ? 'Online' : formatTime(time)}
+                </span>
+            )}
 
-            <EventImage src={image} alt={title} w={240} className="h-14 w-20 shrink-0 rounded-lg max-sm:hidden" />
+            <EventImage src={image} alt={title} w={240} fallbackLogo={siteLogo(event.url)} className="h-14 w-20 shrink-0 rounded-lg max-sm:hidden" />
 
             <div className="min-w-0 flex-1">
                 <h3 className="group-hover:text-primary truncate text-[15px] font-semibold leading-tight transition-colors">
@@ -48,7 +57,9 @@ const EventRow = ({ event }: Props) => {
                 </h3>
                 <div className="text-light-200 mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-sm">
                     <span className="font-martian-mono text-light-100 text-xs sm:hidden">
-                        {formatDateRange(date, endDate)} · {mode === 'online' ? 'Online' : formatTime(time)}
+                        {lane === 'hackathon'
+                            ? formatDateRange(date, endDate)
+                            : `${formatDateRange(date, endDate)} · ${mode === 'online' ? 'Online' : formatTime(time)}`}
                     </span>
                     <span className="flex items-center gap-1.5">
                         <Building2 className="size-3.5 shrink-0" aria-hidden />
@@ -59,6 +70,11 @@ const EventRow = ({ event }: Props) => {
                         {flag && <span aria-hidden>{flag}</span>}
                         <span className="truncate">{place}</span>
                     </span>
+                    {showApp && appSignal.status === 'open' && appSignal.deadline && (
+                        <span className="font-martian-mono text-light-100 text-xs">
+                            apply by {monthDay(appSignal.deadline)}
+                        </span>
+                    )}
                 </div>
             </div>
 

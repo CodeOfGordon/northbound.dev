@@ -5,7 +5,7 @@ import posthog from 'posthog-js';
 import { Building2, MapPin } from 'lucide-react';
 import EventImage from '@/components/EventImage';
 import { HIDDEN_TAGS, LANE_ACCENT, LANE_LABELS, laneOf } from '@/lib/constants';
-import { dateBadge, eventFlag, formatCityLabel, formatDateRange, formatPrice, formatTime } from '@/lib/format';
+import { dateBadge, eventFlag, formatCityLabel, formatDateRange, formatPrice, formatTime, monthDay, siteLogo } from '@/lib/format';
 import { applicationSignal, travelSignal } from '@/lib/hackathon';
 import { cn } from '@/lib/utils';
 import type { EventDoc } from '@/lib/events';
@@ -43,7 +43,7 @@ const EventCard = ({ event }: Props) => {
             )}
         >
             <div className="relative h-40 overflow-hidden">
-                <EventImage src={image} alt={title} className="h-full w-full transition-transform duration-500 group-hover:scale-[1.03]" />
+                <EventImage src={image} alt={title} fallbackLogo={siteLogo(event.url)} className="h-full w-full transition-transform duration-500 group-hover:scale-[1.03]" />
                 <div className="absolute inset-0 bg-gradient-to-t from-dark-100 via-dark-100/10 to-transparent" />
 
                 <div className="bg-dark-100/85 border-border-dark absolute left-3 top-3 flex flex-col items-center rounded-lg border px-2.5 py-1 leading-none">
@@ -62,7 +62,11 @@ const EventCard = ({ event }: Props) => {
 
                 <div className="text-light-200 mt-auto flex flex-col gap-1.5 text-sm">
                     <span className="font-martian-mono text-light-100 text-xs">
-                        {formatDateRange(date, endDate)} · {formatTime(time)}
+                        {lane === 'hackathon'
+                            ? // Hackathons are date-scoped (times are placeholder 9:00s);
+                              // the deadline is the datum that matters.
+                              `${formatDateRange(date, endDate)}${appSignal.deadline && appSignal.status === 'open' ? ` · apply by ${monthDay(appSignal.deadline)}` : ''}`
+                            : `${formatDateRange(date, endDate)} · ${formatTime(time)}`}
                     </span>
                     <span className="flex items-center gap-1.5">
                         <MapPin className="size-3.5 shrink-0" aria-hidden />

@@ -386,6 +386,27 @@ venue/country store `''` going forward (city fallback untouched — fingerprint 
 
 ---
 
+## ADR-024 — Online-audience gate, image fallbacks, hackathon row info (2026-08-17)
+
+- **Audience gate**: online docs are kept by the geo gate ("joinable from anywhere"), but
+  gordon flagged India/Africa/APAC-targeted online hackathons and company webinars in the
+  feed. `isNonNorthAmericanAudience()` (relevance.ts) scans title+organizer+description of
+  ONLINE docs for unambiguous non-NA markers (countries, major non-NA cities, APAC/EMEA/
+  LATAM) — applied centrally in scrape.ts. Deliberately absent: NA-ambiguous names (London,
+  Paris, Sydney) and bare demonyms. 49 stored docs cleaned up with gordon's approval
+  (foreign-audience online + the pre-gate Devpost in-person UNKNOWN backlog + the 5 strays;
+  full backup printed in session log).
+- **Images**: watchlist fetcher now extracts `og:image` from event sites (their social-card
+  banner); `EventImage` gains a `fallbackLogo` — the event site's favicon via Google's s2
+  service (`siteLogo()` in lib/format) — so imageless events show the university/company/
+  platform mark centered on the gradient instead of a bare placeholder icon.
+- **Hackathon rows**: date range replaces the placeholder 9:00 time in the row's left
+  column (the month rail only gives the month), and "apply by {date}" joins the meta line
+  when applications are open with a known deadline; cards likewise swap the junk time for
+  the deadline.
+
+---
+
 ## Known follow-ups / tech debt
 - ~~`database/mongodb.ts` stray `v8` import~~ — already removed.
 - ~~`normalizeDate()` UTC day-shift~~ — **fixed 2026-06-10**: `normalizeDate`/`normalizeTime` extract wall-clock parts in the event's IANA timezone (`Intl.DateTimeFormat`); `event.model.ts` reuses the same helpers.

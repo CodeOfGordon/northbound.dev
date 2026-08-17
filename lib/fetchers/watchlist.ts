@@ -77,9 +77,24 @@ function pageText(html: string): string {
     return [title, ...metas, body].join(' ').replace(/\s+/g, ' ');
 }
 
+/** Social-card banner (absolute URLs only) — the best image these sites publish. */
+function ogImage(html: string, baseUrl: string): string {
+    const m =
+        html.match(/<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']/i) ??
+        html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:image["']/i) ??
+        html.match(/<meta[^>]+name=["']twitter:image["'][^>]+content=["']([^"']+)["']/i);
+    if (!m) return '';
+    try {
+        return new URL(m[1], baseUrl).href;
+    } catch {
+        return '';
+    }
+}
+
 async function fetchEntry(entry: WatchlistEntry, today: string): Promise<CompanyStdEvent | null> {
     const url = `https://${entry.host}/`;
     let range: ParsedRange | null = null;
+    let image = '';
     try {
         const res = await fetch(url, {
             headers: { 'user-agent': BROWSER_UA, accept: 'text/html' },
@@ -87,7 +102,9 @@ async function fetchEntry(entry: WatchlistEntry, today: string): Promise<Company
             redirect: 'follow',
         });
         if (!res.ok) throw new Error(`${entry.host} → ${res.status}`);
-        range = extractFutureRange(pageText(await res.text()), today);
+        const html = await res.text();
+        range = extractFutureRange(pageText(html), today);
+        image = ogImage(html, url);
     } catch (e) {
         console.warn(`watchlist: ${entry.host} fetch failed — ${(e as Error).message}`);
     }
@@ -105,6 +122,7 @@ async function fetchEntry(entry: WatchlistEntry, today: string): Promise<Company
         id: entry.host,
         title: entry.name,
         url,
+        image,
         online: false,
         city: entry.city,
         country: entry.country,

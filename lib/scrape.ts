@@ -6,7 +6,7 @@ import { fetchMlh } from './fetchers/mlh';
 import { fetchCompany } from './fetchers/company';
 import { fetchHackathons } from './fetchers/hackathons';
 import { fetchWatchlist } from './fetchers/watchlist';
-import { isConsumerEvent, isRelevant } from './fetchers/relevance';
+import { isConsumerEvent, isNonNorthAmericanAudience, isRelevant } from './fetchers/relevance';
 import { DEV_ONLY_COMPANIES } from './fetchers/config';
 
 export type ScrapeSource = 'luma' | 'eventbrite' | 'meetup' | 'mlh' | 'company' | 'hackathon' | 'watchlist';
@@ -54,6 +54,12 @@ export async function runScrape({ sources }: { sources?: string[] } = {}): Promi
                     // Canada/US (region 'INTL'). Online + unknown-location events are
                     // kept — joinable from anywhere / not confirmed foreign.
                     if (doc.region === 'INTL') return [];
+                    // ...but online events explicitly aimed at another region
+                    // ("EduHack Karnataka", "Women In Product India") are noise here.
+                    if (doc.mode === 'online' &&
+                        isNonNorthAmericanAudience(`${doc.title} ${doc.organizer} ${doc.description}`)) {
+                        return [];
+                    }
                     // Company feeds: drop consumer/retail noise (Tesla Father's Day,
                     // store events), and for consumer brands keep only dev events.
                     if (source === 'company') {

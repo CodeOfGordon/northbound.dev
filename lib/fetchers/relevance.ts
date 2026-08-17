@@ -44,3 +44,20 @@ export function deriveTags(text: string): string[] {
     const tags = TAG_PATTERNS.filter(([, re]) => re.test(text)).map(([tag]) => tag);
     return ['tech', ...tags];
 }
+
+/**
+ * Online events are kept by the geo gate ("joinable from anywhere"), but many
+ * online hackathons/webinars are explicitly aimed at another region ("EduHack
+ * Karnataka", "Women In Product India") — noise for a North-America product.
+ * Strong, unambiguous markers only: country names, major non-NA cities, and
+ * audience-scoping region words. Deliberately NOT listed: ambiguous city names
+ * that exist in NA (London ON, Paris ON, Sydney NS) and bare demonyms.
+ * Applied to title+organizer+description of ONLINE docs only (lib/scrape.ts) —
+ * in-person events are already positively geo-classified.
+ */
+const NON_NA_AUDIENCE =
+    /\b(india|bharat|karnataka|bengaluru|bangalore|mumbai|delhi|hyderabad|chennai|kolkata|pune|gujarat|rajasthan|kerala|tamil nadu|pakistan|karachi|lahore|bangladesh|dhaka|sri lanka|colombo|nepal|kathmandu|africa|african|nigeria|lagos|abuja|kenya|nairobi|ghana|accra|egypt|cairo|morocco|tunisia|ethiopia|uganda|rwanda|europe|european|united kingdom|singapore|malaysia|kuala lumpur|indonesia|jakarta|philippines|manila|vietnam|hanoi|thailand|bangkok|japan|tokyo|osaka|korea|seoul|china|beijing|shanghai|shenzhen|hangzhou|taiwan|taipei|hong kong|australia|melbourne|brisbane|new zealand|auckland|brazil|s[aã]o paulo|latin america|latam|middle east|mena|dubai|abu dhabi|uae|saudi|riyadh|qatar|doha|israel|tel aviv|turkey|istanbul|ankara|russia|moscow|ukraine|kyiv|poland|warsaw|romania|bucharest|apac|emea|gcc|southeast asia|south asia)\b/i;
+
+export function isNonNorthAmericanAudience(text: string): boolean {
+    return NON_NA_AUDIENCE.test(text);
+}

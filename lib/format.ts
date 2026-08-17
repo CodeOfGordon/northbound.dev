@@ -158,6 +158,22 @@ export function monthHeader(ym: string): { label: string; sub: string } {
     return { label: LONG[m - 1] ?? ym, sub: String(y) };
 }
 
+/**
+ * Logo of the event's own site (university hackathon, company, platform) via
+ * Google's favicon service — the image-of-last-resort so imageless events show
+ * an identity mark instead of a bare placeholder. Free, no key, always answers
+ * (worst case a generic globe).
+ */
+export function siteLogo(eventUrl?: string): string {
+    if (!eventUrl) return '';
+    try {
+        const host = new URL(eventUrl).hostname;
+        return `https://www.google.com/s2/favicons?domain=${host}&sz=128`;
+    } catch {
+        return '';
+    }
+}
+
 /** True when `ts` is more than `days` old — kept here so render paths stay Date.now()-free. */
 export function olderThanDays(ts: Date | string | number, days: number): boolean {
     const then = new Date(ts).getTime();
