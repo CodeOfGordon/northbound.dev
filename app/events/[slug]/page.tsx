@@ -174,7 +174,7 @@ const EventPage = async ({ params }: { params: Params }) => {
                                     </span>
                                 );
                             })()}
-                            {event.category === 'hackathon' && appSignal.status !== 'unknown' && (
+                            {appSignal.status !== 'unknown' && (
                                 <span className="flex items-center gap-3">
                                     <Send className="text-primary size-5 shrink-0" aria-hidden />
                                     <span>

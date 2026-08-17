@@ -2,10 +2,10 @@
 
 import Link from 'next/link';
 import posthog from 'posthog-js';
-import { Building2, MapPin } from 'lucide-react';
+import { Building2, CalendarRange, MapPin, Send } from 'lucide-react';
 import EventImage from '@/components/EventImage';
 import { LANE_ACCENT, LANE_LABELS, laneOf } from '@/lib/constants';
-import { eventFlag, formatCityLabel, formatDateRange, formatPrice, formatTime, monthDay, siteLogo } from '@/lib/format';
+import { dateBadge, eventFlag, formatCityLabel, formatDateRange, formatPrice, formatTime, monthDay, siteLogo } from '@/lib/format';
 import { applicationSignal } from '@/lib/hackathon';
 import { cn } from '@/lib/utils';
 import type { EventDoc } from '@/lib/events';
@@ -13,7 +13,7 @@ import type { EventDoc } from '@/lib/events';
 interface Props {
     event: EventDoc;
     /**
-     * Lead with the event's dates in the left column (month-grouped feeds,
+     * Lead with the event's date in the left column (month-grouped feeds,
      * where the rail only pins the month). Hackathon rows do this regardless.
      */
     showDate?: boolean;
@@ -31,6 +31,13 @@ const EventRow = ({ event, showDate = false }: Props) => {
     // free) — when known it takes the badge slot instead of "Free".
     const appSignal = applicationSignal(event);
     const showApp = lane === 'hackathon' && appSignal.status !== 'unknown';
+    // Date-first rows: hackathons always (stored times are placeholder 9:00s),
+    // and any row inside a month-grouped feed. The start date becomes a compact
+    // corner-badge (same idiom as EventCard); the full range + apply-by deadline
+    // sit side by side in the meta line, each labeled by its icon.
+    const dateFirst = lane === 'hackathon' || showDate;
+    const badge = dateBadge(date);
+    const showTime = !dateFirst || (lane !== 'hackathon' && mode !== 'online');
 
     return (
         <Link
@@ -41,20 +48,10 @@ const EventRow = ({ event, showDate = false }: Props) => {
                 accent.hover,
             )}
         >
-            {lane === 'hackathon' || showDate ? (
-                // Date-first column: hackathons always (stored times are placeholder
-                // 9:00s), and any row inside a month-grouped feed (the rail only pins
-                // the month). Second line: end of a multi-day range, else the time for
-                // sources where it's real.
-                <span className="text-light-100 font-martian-mono flex w-16 shrink-0 flex-col text-center text-xs leading-tight max-sm:hidden">
-                    <span>{monthDay(date)}</span>
-                    {endDate && endDate !== date ? (
-                        <span className="text-light-200">– {monthDay(endDate)}</span>
-                    ) : (
-                        lane !== 'hackathon' && (
-                            <span className="text-light-200">{mode === 'online' ? 'Online' : formatTime(time)}</span>
-                        )
-                    )}
+            {dateFirst ? (
+                <span className="flex w-16 shrink-0 flex-col items-center leading-none max-sm:hidden">
+                    <span className="label text-primary text-[9px]">{badge.month}</span>
+                    <span className="font-martian-mono text-foreground text-base font-semibold">{badge.day}</span>
                 </span>
             ) : (
                 <span className="text-light-100 font-martian-mono w-16 shrink-0 text-center text-xs max-sm:hidden">
@@ -69,11 +66,25 @@ const EventRow = ({ event, showDate = false }: Props) => {
                     {title}
                 </h3>
                 <div className="text-light-200 mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-sm">
-                    <span className="font-martian-mono text-light-100 text-xs sm:hidden">
-                        {lane === 'hackathon'
-                            ? formatDateRange(date, endDate)
-                            : `${formatDateRange(date, endDate)} · ${mode === 'online' ? 'Online' : formatTime(time)}`}
-                    </span>
+                    {dateFirst ? (
+                        <span className="text-light-100 flex items-center gap-1.5 whitespace-nowrap">
+                            <CalendarRange className="size-3.5 shrink-0" aria-hidden />
+                            {formatDateRange(date, endDate)}
+                            {showTime && ` · ${formatTime(time)}`}
+                        </span>
+                    ) : (
+                        <span className="font-martian-mono text-light-100 text-xs sm:hidden">
+                            {formatDateRange(date, endDate)} · {mode === 'online' ? 'Online' : formatTime(time)}
+                        </span>
+                    )}
+                    {appSignal.deadline && appSignal.status !== 'closed' && (
+                        // Any lane — some non-hackathon events carry an application
+                        // deadline too. Hidden once the deadline passes (forced closed).
+                        <span className="text-light-100 flex items-center gap-1.5 whitespace-nowrap">
+                            <Send className="size-3.5 shrink-0" aria-hidden />
+                            Apply by {monthDay(appSignal.deadline)}
+                        </span>
+                    )}
                     <span className="flex items-center gap-1.5">
                         <Building2 className="size-3.5 shrink-0" aria-hidden />
                         <span className="truncate">{organizer}</span>
@@ -83,11 +94,6 @@ const EventRow = ({ event, showDate = false }: Props) => {
                         {flag && <span aria-hidden>{flag}</span>}
                         <span className="truncate">{place}</span>
                     </span>
-                    {showApp && appSignal.status === 'open' && appSignal.deadline && (
-                        <span className="font-martian-mono text-light-100 text-xs">
-                            apply by {monthDay(appSignal.deadline)}
-                        </span>
-                    )}
                 </div>
             </div>
 

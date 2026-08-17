@@ -31,10 +31,11 @@ function todayToronto(): string {
  * Scrape-owned status wins when it's a real signal (it refreshes nightly from
  * the platform API); enrichment fills in for sites we scan ourselves. A passed
  * deadline forces 'closed' regardless — stale "open" between checks must not
- * show as actionable.
+ * show as actionable. Not hackathon-gated: any event whose source ever supplies
+ * application fields gets the same treatment (today that's Devpost + the
+ * enrichment pass; events without the fields resolve to 'unknown').
  */
 export function applicationSignal(e: EventDoc): ApplicationSignal {
-    if (e.category !== 'hackathon') return { status: 'unknown' };
     const scraped = e.applicationStatus && e.applicationStatus !== 'unknown' ? e.applicationStatus : undefined;
     const enriched = e.enrichment?.application;
     const status = scraped ?? (enriched?.status ?? 'unknown');

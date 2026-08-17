@@ -61,13 +61,21 @@ const EventCard = ({ event }: Props) => {
                 <h3 className="line-clamp-2 text-base font-semibold leading-snug group-hover:text-primary">{title}</h3>
 
                 <div className="text-light-200 mt-auto flex flex-col gap-1.5 text-sm">
-                    <span className="font-martian-mono text-light-100 text-xs">
-                        {lane === 'hackathon'
-                            ? // Hackathons are date-scoped (times are placeholder 9:00s);
-                              // the deadline is the datum that matters.
-                              `${formatDateRange(date, endDate)}${appSignal.deadline && appSignal.status === 'open' ? ` · apply by ${monthDay(appSignal.deadline)}` : ''}`
-                            : `${formatDateRange(date, endDate)} · ${formatTime(time)}`}
-                    </span>
+                    {(() => {
+                        // Hackathons are date-scoped (times are placeholder 9:00s); any
+                        // lane may carry an application deadline worth surfacing.
+                        const applyBy =
+                            appSignal.deadline && appSignal.status !== 'closed'
+                                ? ` · apply by ${monthDay(appSignal.deadline)}`
+                                : '';
+                        return (
+                            <span className="font-martian-mono text-light-100 text-xs">
+                                {lane === 'hackathon'
+                                    ? `${formatDateRange(date, endDate)}${applyBy}`
+                                    : `${formatDateRange(date, endDate)} · ${formatTime(time)}${applyBy}`}
+                            </span>
+                        );
+                    })()}
                     <span className="flex items-center gap-1.5">
                         <MapPin className="size-3.5 shrink-0" aria-hidden />
                         {flag && <span aria-hidden>{flag}</span>}
