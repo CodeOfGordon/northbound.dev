@@ -55,11 +55,13 @@ const isOpen = (d: any): boolean =>
 
 export async function runDigest(opts: DigestOptions = {}): Promise<DigestResult> {
     const apiKey = process.env.RESEND_API_KEY;
-    const to = process.env.DIGEST_EMAIL;
+    // Comma-separated recipient list. NOTE: recipients beyond the Resend account
+    // owner only receive mail once a domain is verified and DIGEST_FROM is set.
+    const to = (process.env.DIGEST_EMAIL ?? '').split(',').map((s) => s.trim()).filter(Boolean);
     // Not-yet-configured is a soft skip (green job, reason in the step log) —
     // a hard 500 would paint every nightly run red until Resend is set up.
     // A send FAILURE with config present still errors loudly below.
-    if (!apiKey || !to) {
+    if (!apiKey || !to.length) {
         return { ok: true, sent: false, skipped: 'not-configured: RESEND_API_KEY and/or DIGEST_EMAIL unset' };
     }
 

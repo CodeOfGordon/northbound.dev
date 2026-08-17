@@ -93,13 +93,16 @@ export function renderDigest(sections: DigestSections, siteUrl: string, todayLab
 }
 
 /** Send via Resend's HTTP API. Returns null on success, an error string on failure — never throws. */
-export async function sendEmail(args: { apiKey: string; to: string; subject: string; html: string; text: string }): Promise<string | null> {
+export async function sendEmail(args: { apiKey: string; to: string[]; subject: string; html: string; text: string }): Promise<string | null> {
     try {
         const res = await fetch('https://api.resend.com/emails', {
             method: 'POST',
             headers: { Authorization: `Bearer ${args.apiKey}`, 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                from: 'Northbound <onboarding@resend.dev>',
+                // Default sender works without a verified domain but only delivers to
+                // the Resend account owner. Verify a domain (Resend → Domains, free)
+                // and set DIGEST_FROM to an address on it to reach other recipients.
+                from: process.env.DIGEST_FROM ?? 'Northbound <onboarding@resend.dev>',
                 to: args.to,
                 subject: args.subject,
                 html: args.html,
