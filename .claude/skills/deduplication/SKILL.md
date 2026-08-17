@@ -1,7 +1,16 @@
 ---
 name: deduplication
-description: Use when deduplicating events that appear on multiple sources. Covers the fingerprint hash strategy and Mongo upsert-on-fingerprint via updateOne/bulkWrite.
+description: RETIRED 2026-07-20 — do not use. This pre-implementation skill describes a merge policy (richest-data-wins, source in $setOnInsert) that was never built — the real upsert is a blind whole-doc $set. Load northbound-pipeline-engineering (upsert semantics as-built) and northbound-architecture-contract (fingerprint invariants) instead.
 ---
+
+# RETIRED — do not follow this skill
+
+The implemented pipeline does a blind `$set` of the whole normalized doc (last
+scraper wins, including `source`), with only `fingerprint` and `slug` set on
+insert — not the merge policy described below. **Use
+`northbound-pipeline-engineering` and `northbound-architecture-contract`
+instead.** Everything below this banner is the retired original text, kept only
+for git-diff clarity — it contains known-wrong claims.
 
 # Event Deduplication (fingerprint + upsert)
 

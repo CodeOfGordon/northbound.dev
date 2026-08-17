@@ -42,3 +42,20 @@ yarn-error.log*
 next-env.d.ts
 .env.local
 .claude/worktrees/
+
+# agent tooling — vendored third-party skill libraries + personal settings (project
+# skills under .claude/skills/northbound-* ARE tracked; these are not project IP)
+/.agents/
+/.impeccable/
+.claude/settings.local.json
+.claude/skills/animate
+.claude/skills/animation-vocabulary
+.claude/skills/apple-design
+.claude/skills/ask-sonner
+.claude/skills/emil-design-eng
+.claude/skills/find-animation-opportunities
+.claude/skills/improve-animations
+.claude/skills/pick-ui-library
+.claude/skills/prototype
+.claude/skills/review-animations
+.claude/skills/impeccable/

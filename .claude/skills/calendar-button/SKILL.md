@@ -1,7 +1,16 @@
 ---
 name: calendar-button
-description: Use when adding the Add to Calendar button (Google/Outlook/Apple/iCal) to a React component. Covers add-to-calendar-button-react, the Next.js App Router use-client wrapper, timeZone/startTime formats, and SSR gotchas.
+description: RETIRED 2026-07-20 — do not use. This pre-implementation skill's plan diverges from the shipped component (different filename, different PostHog event name, different option list). Load northbound-frontend-engineering (calendar export section) instead.
 ---
+
+# RETIRED — do not follow this skill
+
+The shipped component differs from the plan below: `AddToCalendar.tsx` (not
+`AddToCalendarBtn.tsx`), PostHog event `calendar_add_clicked` (not
+`add_to_calendar_clicked`), options include Microsoft365 and drop Yahoo, and no
+`utils/calendar.ts` fallback was built. **Use `northbound-frontend-engineering`
+instead.** Everything below this banner is the retired original text, kept only
+for git-diff clarity — it contains known-wrong claims.
 
 # Add to Calendar button (Northbound)
 

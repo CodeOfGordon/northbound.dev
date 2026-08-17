@@ -1,7 +1,17 @@
 ---
 name: event-scraping
-description: Use when writing or modifying the scraper that discovers and extracts raw event data from Luma, Eventbrite, Meetup, or company sites. Covers choosing Apify actors vs Playwright vs fetch vs Brave Search, polling, pagination, rate limits, and robots/ToS etiquette.
+description: RETIRED 2026-07-20 — do not use. This pre-implementation skill drifted badly (it documents Luma-via-Apify, superseded by the free direct api.lu.ma API per ADR-009). Load northbound-pipeline-engineering (change checklists) and northbound-source-platforms-reference (platform/endpoint knowledge) instead.
 ---
+
+# RETIRED — do not follow this skill
+
+Written before the pipeline existed; no longer matches the code (e.g. it
+documents Luma scraping via an Apify actor — reality is the free direct
+`api.lu.ma` JSON API, ADR-009 — and predates the region gate and the `hackathon`
+source). **Use `northbound-pipeline-engineering` and
+`northbound-source-platforms-reference` instead.** Everything below this banner
+is the retired original text, kept only for git-diff clarity — it contains
+known-wrong claims.
 
 # Event Scraping (scraper-agent)
 
