@@ -38,6 +38,8 @@ const ONLY_HOST = (() => {
     return i >= 0 ? String(args[i + 1] ?? '').toLowerCase() : null;
 })();
 const REFRESH_UNKNOWN = args.includes('--refresh-unknown');
+/** Re-check every host regardless of cadence — for after a classifier fix. */
+const REFRESH_ALL = args.includes('--refresh-all');
 const NO_RENDER = args.includes('--no-render');
 
 const UA = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36';
@@ -91,6 +93,27 @@ function findFaqLink(html, baseUrl) {
 }
 
 // ---- classifiers ----------------------------------------------------------
+/**
+ * True when the match sits inside an interrogative sentence. FAQ pages list
+ * their questions in the DOM even when the answers are collapsed, so
+ * "Is reimbursement offered for travel expenses?" would otherwise read as a
+ * policy statement — it says nothing about the answer. (ADR-028)
+ */
+function isQuestionContext(text, index, matchLen) {
+    const rest = text.slice(index + matchLen);
+    const end = rest.search(/[.?!]/);
+    return end !== -1 && rest[end] === '?';
+}
+
+/** First match of `re` that is an actual statement, not a FAQ question. */
+function firstStatementMatch(text, re) {
+    const global = new RegExp(re.source, re.flags.includes('g') ? re.flags : `${re.flags}g`);
+    for (const m of text.matchAll(global)) {
+        if (!isQuestionContext(text, m.index, m[0].length)) return m;
+    }
+    return null;
+}
+
 function evidenceAround(text, index, matchLen) {
     const start = Math.max(0, index - 120);
     return text.slice(start, index + matchLen + 120).replace(/\s+/g, ' ').trim().slice(0, 280);
@@ -135,7 +158,7 @@ function classifyApplication(text, anchorDate) {
     // Deliberate statements beat lingering CTA buttons: closed → not_yet → open.
     for (const [status, res] of [['closed', CLOSED_RES], ['not_yet', NOT_YET_RES], ['open', OPEN_RES]]) {
         for (const re of res) {
-            const m = text.match(re);
+            const m = firstStatementMatch(text, re);
             if (m) {
                 return {
                     status,
@@ -170,7 +193,7 @@ function classifyTravel(text) {
     if (!gate) return { status: 'unknown' }; // silence is never a 'no'
     for (const [status, res] of [['no', TRAVEL_NO_RES], ['yes', TRAVEL_YES_RES]]) {
         for (const re of res) {
-            const m = text.match(re);
+            const m = firstStatementMatch(text, re);
             if (m) {
                 const evidence = evidenceAround(text, m.index, m[0].length);
                 const amountM = evidence.match(/(?:up\s+to\s+|maximum\s+of\s+)?\$\s?\d{2,4}/i);
@@ -183,6 +206,7 @@ function classifyTravel(text) {
 
 // ---- staleness ------------------------------------------------------------
 function isStale(doc, today) {
+    if (REFRESH_ALL) return true;
     const e = doc.enrichment;
     if (!e?.checkedAt) return true;
     // Backfill lever: re-check hosts whose travel policy we never resolved,
