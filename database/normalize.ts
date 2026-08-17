@@ -311,7 +311,10 @@ function mapRaw(raw: any, source: Source): CanonicalEvent {
                 image: raw.backgroundUrl ?? raw.logoUrl ?? '',
                 venue: raw.location ?? (digital ? 'Online' : ''),
                 country: digital ? 'Online' : countryName(raw.venueAddress?.country),
-                city: digital ? 'Online' : canonicalCity(raw.venueAddress?.city ?? DEFAULT_CITY),
+                // MLH city strings can carry stray trailing commas ("Atlanta,") —
+                // strip them HERE only (a global canonicalCity change would silently
+                // re-fingerprint other sources' stored docs, e.g. "Washington, D.C.").
+                city: digital ? 'Online' : canonicalCity(String(raw.venueAddress?.city ?? DEFAULT_CITY).replace(/,+\s*$/, '')),
                 date: normalizeDate(raw.startsAt, DEFAULT_TZ),
                 time: normalizeTime(raw.startsAt, DEFAULT_TZ),
                 endDate: raw.endsAt ? normalizeDate(raw.endsAt, DEFAULT_TZ) : undefined,

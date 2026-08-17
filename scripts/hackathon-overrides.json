@@ -1,0 +1,47 @@
+{
+  "_comment": "Hostname-keyed curated overrides for the enrichment script (travel policy only — application status is time-varying and would rot here). Sources verified 2026-08-16; refresh when an org announces a policy change.",
+  "hackmit.org": {
+    "travel": {
+      "status": "yes",
+      "amount": "~80% of travel costs",
+      "evidence": "Curated: HackMIT runs a separate travel-application cycle reimbursing up to ~80% of travel for hackers coming from >50 miles away (was a $200 cap in earlier years)."
+    }
+  },
+  "treehacks.com": {
+    "travel": {
+      "status": "yes",
+      "evidence": "Curated: TreeHacks covers meals, travel, and lodging for accepted out-of-area hackers (\"We take care of meals, travels, and lodging\" — treehacks.com)."
+    }
+  },
+  "pennapps.com": {
+    "travel": {
+      "status": "yes",
+      "amount": "up to $500",
+      "evidence": "Curated: PennApps historically provides chartered buses for schools plus direct travel reimbursements (reported up to $500)."
+    }
+  },
+  "hoohacks.io": {
+    "travel": {
+      "status": "yes",
+      "evidence": "Curated: HooHacks has stated \"We will provide travel reimbursement\" on its 2024-2026 Devpost listings."
+    }
+  },
+  "yhack.org": {
+    "travel": {
+      "status": "yes",
+      "evidence": "Curated: YHack lets accepted participants apply for need-based travel reimbursement, with most support for East-Coast travel."
+    }
+  },
+  "calhacks.io": {
+    "travel": {
+      "status": "yes",
+      "evidence": "Curated: Cal Hacks runs a travel-stipend application (apply.calhacks.io/travel); amounts are need-based and not published."
+    }
+  },
+  "mchacks.ca": {
+    "travel": {
+      "status": "no",
+      "evidence": "Curated: McHacks FAQ — \"we are not able to provide travel reimbursements, however we will have sleeping areas available at the venue itself.\""
+    }
+  }
+}

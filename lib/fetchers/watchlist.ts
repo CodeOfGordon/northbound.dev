@@ -45,9 +45,10 @@ export function extractFutureRange(text: string, today: string): ParsedRange | n
         const start = `${startYear}-${pad(sm)}-${pad(sd)}`;
         const end = `${year}-${pad(em)}-${pad(ed)}`;
         if (end < start) continue;
+        // NOTE: no next-year guess for yearless ranges — a stale page showing last
+        // edition's "January 17-18" would fabricate a future event (seen live on
+        // mchacks.ca). Yearless is only trusted in its current-year reading.
         candidates.push({ start, end });
-        // Yearless ranges may belong to next year — try that reading too.
-        if (!m[5]) candidates.push({ start: `${startYear + 1}-${pad(sm)}-${pad(sd)}`, end: `${year + 1}-${pad(em)}-${pad(ed)}` });
     }
     for (const m of text.matchAll(SINGLE_RE)) {
         const mm = monthNumber(m[1]);

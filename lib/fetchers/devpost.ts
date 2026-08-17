@@ -8,6 +8,7 @@
  */
 import { BROWSER_UA, parseDevpostRange } from './companies/shared';
 import type { CompanyStdEvent } from './companies/shared';
+import { classifyRegion } from './geo';
 import { MAX_HACKATHON_DAYS, MAX_ITEMS } from './config';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -51,6 +52,18 @@ export async function fetchDevpost(): Promise<unknown[]> {
                     slice === 'online' ||
                     h.displayed_location?.icon === 'globe' ||
                     h.displayed_location?.location === 'Online';
+
+                // In-person slice: Devpost locations are free text — sometimes
+                // "City, ST", sometimes a bare venue name ("SNS Innovation HUB").
+                // Unresolvable venues default to region UNKNOWN, which the scrape
+                // gate KEEPS — so foreign venues would leak into the feed. Require
+                // a positive US/CA classification here (precision over recall;
+                // verified live: University of Sydney passed the generic gate).
+                if (!online) {
+                    const loc = String(h.displayed_location?.location ?? '');
+                    const geo = classifyRegion({ city: loc, venue: loc, online: false });
+                    if (geo.region !== 'US' && geo.region !== 'CA') continue;
+                }
                 const themes = Array.isArray(h.themes) ? h.themes.map((t: any) => t.name).filter(Boolean) : [];
                 const thumb = typeof h.thumbnail_url === 'string' ? h.thumbnail_url : '';
                 const image = thumb.startsWith('//') ? `https:${thumb}` : thumb;
