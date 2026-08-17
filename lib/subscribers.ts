@@ -14,6 +14,7 @@ export interface SubscriberView {
     regions: string[];
     usTravelOnly: boolean;
     minDaysOut: number;
+    frequency: string;
     status: 'active' | 'unsubscribed';
 }
 
@@ -22,8 +23,8 @@ export async function getSubscriberByToken(token?: string): Promise<SubscriberVi
     try {
         await connectDB();
         const doc = await Subscriber.findOne({ token }).lean<{
-            email: string; topics: string[]; regions: string[];
-            usTravelOnly: boolean; minDaysOut: number; status: 'active' | 'unsubscribed';
+            email: string; topics: string[]; regions: string[]; usTravelOnly: boolean;
+            minDaysOut: number; frequency: string; status: 'active' | 'unsubscribed';
         } | null>();
         if (!doc) return null;
         return {
@@ -32,6 +33,7 @@ export async function getSubscriberByToken(token?: string): Promise<SubscriberVi
             regions: doc.regions ?? [],
             usTravelOnly: !!doc.usTravelOnly,
             minDaysOut: doc.minDaysOut ?? 21,
+            frequency: doc.frequency ?? 'weekly',
             status: doc.status ?? 'active',
         };
     } catch {

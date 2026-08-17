@@ -12,7 +12,7 @@
  *   C "Deadlines approaching" — application deadlines 7/3/1 days out (stateless)
  */
 import 'server-only';
-import { Event, Subscriber, DigestMeta } from '@/database';
+import { Event, Subscriber, DigestMeta, FREQUENCY_DAYS } from '@/database';
 import { matchEvent, rulesForSubscriber, type EventLike, type InterestRule } from '@/lib/notify/match';
 import { renderDigest, type DigestItem, type DigestSections } from '@/lib/notify/email';
 import { todayInToronto } from '@/lib/events';
@@ -69,10 +69,14 @@ const deadlineOf = (d: any): string | undefined => d.applicationDeadline ?? d.en
 const isOpen = (d: any): boolean =>
     d.applicationStatus === 'open' || (d.applicationStatus == null && d.enrichment?.application?.status === 'open');
 
+/** Email wording mirrors the site: a past edition is never stated as this year's policy. */
 function travelNote(d: any): string | undefined {
     const t = d.enrichment?.travel;
     if (!t || t.status !== 'yes') return undefined;
-    return t.amount ? `Travel reimbursement · ${t.amount}` : 'Travel reimbursement offered';
+    if (t.basis === 'prior-edition') {
+        return `Travel reimbursement offered in ${t.year ?? 'past years'} — not yet confirmed for this edition`;
+    }
+    return t.amount ? `Travel reimbursement offered · ${t.amount}` : 'Travel reimbursement offered';
 }
 
 function toItem(d: any, labels?: string[]): DigestItem {
@@ -83,11 +87,16 @@ function toItem(d: any, labels?: string[]): DigestItem {
     };
 }
 
-/** Toronto calendar date of a timestamp — the same-day rerun guard. */
+/** Toronto calendar date of a timestamp — cadence is counted in calendar days. */
 function torontoDay(d: Date): string {
     return new Intl.DateTimeFormat('en-CA', {
         timeZone: 'America/Toronto', year: 'numeric', month: '2-digit', day: '2-digit',
     }).format(d);
+}
+
+/** Whole calendar days between two YYYY-MM-DD strings. */
+function daysBetween(from: string, to: string): number {
+    return Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86_400_000);
 }
 
 export async function runDigest(opts: DigestOptions = {}): Promise<DigestResult> {
@@ -115,11 +124,13 @@ export async function runDigest(opts: DigestOptions = {}): Promise<DigestResult>
                 { $or: [{ date: { $gte: today } }, { endDate: { $gte: today } }] },
             ],
         }).lean<any[]>(),
+        // Widest window any cadence can ask for (monthly = 30 + 3 margin);
+        // each subscriber narrows this to their own window below.
         Event.find({
             category: 'hackathon',
             $or: [
-                { applicationDeadline: { $in: deadlineTargets } },
-                { 'enrichment.application.deadline': { $in: deadlineTargets } },
+                { applicationDeadline: { $gte: today, $lte: addDaysISO(today, 33) } },
+                { 'enrichment.application.deadline': { $gte: today, $lte: addDaysISO(today, 33) } },
             ],
         }).lean<any[]>(),
     ]);
@@ -128,9 +139,11 @@ export async function runDigest(opts: DigestOptions = {}): Promise<DigestResult>
     const emptyCursorIds: any[] = [];
 
     for (const sub of subs) {
-        // Same-day guard: reruns must not double-send (section C is date-derived
-        // and would repeat).
-        if (!opts.force && sub.lastSentAt && torontoDay(new Date(sub.lastSentAt)) === today) continue;
+        // Cadence guard, which also makes reruns idempotent (daily = same-day guard).
+        const freqDays = FREQUENCY_DAYS[sub.frequency ?? 'weekly'] ?? 7;
+        if (!opts.force && sub.lastSentAt && daysBetween(torontoDay(new Date(sub.lastSentAt)), today) < freqDays) {
+            continue;
+        }
 
         const rules: InterestRule[] = rulesForSubscriber({
             topics: sub.topics ?? [],
@@ -164,11 +177,19 @@ export async function runDigest(opts: DigestOptions = {}): Promise<DigestResult>
             openIds.push(String(d._id));
         }
 
-        // C — deadlines exactly 7/3/1 days out (stateless: three reminders max)
+        // C — deadline reminders. Daily readers get the classic 7/3/1 nudges;
+        // anyone slower gets everything closing before their NEXT email (plus a
+        // 3-day margin), otherwise a weekly reader would hear about a deadline
+        // days after it passed.
+        const deadlineWindowEnd = freqDays === 1 ? null : addDaysISO(today, freqDays + 3);
         const deadlines: DigestItem[] = [];
         for (const d of deadlineDocs) {
             const deadline = deadlineOf(d);
-            if (!deadline || !deadlineTargets.includes(deadline)) continue;
+            if (!deadline) continue;
+            const inWindow = deadlineWindowEnd
+                ? deadline >= today && deadline <= deadlineWindowEnd
+                : deadlineTargets.includes(deadline);
+            if (!inWindow) continue;
             if (!isOpen(d)) continue;
             if (!matchEvent(d as EventLike, rules, today).length) continue;
             deadlines.push(toItem(d));

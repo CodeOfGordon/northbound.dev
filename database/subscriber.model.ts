@@ -21,6 +21,8 @@ export interface ISubscriber extends Document {
     usTravelOnly: boolean;
     /** Skip anything starting sooner than this — hackathon applications close early. */
     minDaysOut: number;
+    /** How often a digest may go out. Weekly by default: hackathon news moves in weeks. */
+    frequency: 'daily' | 'weekly' | 'biweekly' | 'monthly';
     /** Considered-through cursor for "new since last digest". */
     lastDigestAt?: Date;
     /** Last actual send (same-day rerun guard). */
@@ -35,6 +37,9 @@ export interface ISubscriber extends Document {
 export function newSubscriberToken(): string {
     return randomBytes(24).toString('hex');
 }
+
+/** Minimum days between sends, per cadence. */
+export const FREQUENCY_DAYS: Record<string, number> = { daily: 1, weekly: 7, biweekly: 14, monthly: 30 };
 
 const SubscriberSchema = new Schema<ISubscriber>(
     {
@@ -62,6 +67,7 @@ const SubscriberSchema = new Schema<ISubscriber>(
         },
         usTravelOnly: { type: Boolean, default: false },
         minDaysOut: { type: Number, default: 21, min: 0, max: 180 },
+        frequency: { type: String, enum: ['daily', 'weekly', 'biweekly', 'monthly'], default: 'weekly' },
         lastDigestAt: { type: Date },
         lastSentAt: { type: Date },
         notifiedOpenIds: { type: [String], default: [] },

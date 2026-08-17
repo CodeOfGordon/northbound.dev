@@ -195,13 +195,8 @@ const EventPage = async ({ params }: { params: Params }) => {
                             <div className="border-border-dark flex flex-col gap-1.5 border-t pt-4">
                                 <span className="text-light-100 flex items-start gap-3 text-base">
                                     <Plane className="text-primary mt-0.5 size-5 shrink-0" aria-hidden />
-                                    <span>
-                                        {travel.status === 'yes' &&
-                                            `Travel reimbursement offered${travel.amount ? ` · ${travel.amount}` : ''}`}
-                                        {travel.status === 'no' && 'No travel reimbursement'}
-                                        {travel.status === 'unknown' && (
-                                            <span className="text-light-200">Travel support not listed — check the event site</span>
-                                        )}
+                                    <span className={travel.status === 'unknown' ? 'text-light-200' : undefined}>
+                                        {travel.label}
                                     </span>
                                 </span>
                                 {travel.evidence && (
@@ -209,7 +204,12 @@ const EventPage = async ({ params }: { params: Params }) => {
                                 )}
                                 {travel.checkedAt && (
                                     <p className="label pl-8 normal-case">
-                                        checked {timeAgo(travel.checkedAt)} · {travel.curated ? 'curated' : 'from the event site'}
+                                        checked {timeAgo(travel.checkedAt)} ·{' '}
+                                        {travel.curated
+                                            ? 'curated'
+                                            : travel.basis === 'prior-edition'
+                                              ? `from the ${travel.year} event site`
+                                              : 'from the event site'}
                                     </p>
                                 )}
                             </div>

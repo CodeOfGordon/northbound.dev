@@ -11,6 +11,7 @@ export interface SubscribePrefs {
     regions: string[];
     usTravelOnly: boolean;
     minDaysOut: number;
+    frequency: string;
 }
 
 interface Props {
@@ -38,7 +39,20 @@ const LEAD_TIMES: { value: number; label: string }[] = [
     { value: 45, label: 'At least 6 weeks out' },
 ];
 
-const DEFAULTS: SubscribePrefs = { topics: ['hackathon'], regions: ['CA', 'US'], usTravelOnly: false, minDaysOut: 21 };
+const FREQUENCIES: { value: string; label: string }[] = [
+    { value: 'daily', label: 'Daily — as soon as something turns up' },
+    { value: 'weekly', label: 'Weekly — one roundup (recommended)' },
+    { value: 'biweekly', label: 'Every two weeks' },
+    { value: 'monthly', label: 'Monthly' },
+];
+
+const DEFAULTS: SubscribePrefs = {
+    topics: ['hackathon'],
+    regions: ['CA', 'US'],
+    usTravelOnly: false,
+    minDaysOut: 21,
+    frequency: 'weekly',
+};
 
 const toggle = (list: string[], value: string) =>
     list.includes(value) ? list.filter((v) => v !== value) : [...list, value];
@@ -54,6 +68,7 @@ const SubscribeForm = ({ token, initial }: Props) => {
     const [regions, setRegions] = useState<string[]>(start.regions);
     const [usTravelOnly, setUsTravelOnly] = useState(start.usTravelOnly);
     const [minDaysOut, setMinDaysOut] = useState(start.minDaysOut);
+    const [frequency, setFrequency] = useState(start.frequency ?? 'weekly');
     const [state, setState] = useState<'idle' | 'saving' | 'done'>('idle');
     const [error, setError] = useState('');
 
@@ -65,11 +80,11 @@ const SubscribeForm = ({ token, initial }: Props) => {
             const res = await fetch('/api/subscribe', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ email, topics, regions, usTravelOnly, minDaysOut, token }),
+                body: JSON.stringify({ email, topics, regions, usTravelOnly, minDaysOut, frequency, token }),
             });
             const data = await res.json().catch(() => ({}));
             if (!res.ok) throw new Error(data?.error ?? 'Something went wrong. Try again.');
-            posthog.capture('digest_subscribed', { topics, regions, usTravelOnly, minDaysOut, updated: !!token });
+            posthog.capture('digest_subscribed', { topics, regions, usTravelOnly, minDaysOut, frequency, updated: !!token });
             setState('done');
         } catch (err) {
             setError((err as Error).message);
@@ -157,6 +172,23 @@ const SubscribeForm = ({ token, initial }: Props) => {
             </fieldset>
 
             <div className="flex flex-col gap-2">
+                <label htmlFor="frequency" className="label">
+                    How often?
+                </label>
+                <select id="frequency" className="field w-full" value={frequency} onChange={(e) => setFrequency(e.target.value)}>
+                    {FREQUENCIES.map((f) => (
+                        <option key={f.value} value={f.value}>
+                            {f.label}
+                        </option>
+                    ))}
+                </select>
+                <p className="text-light-200 text-xs">
+                    Approaching application deadlines are always included in time — the reminder window widens to
+                    cover the gap between emails.
+                </p>
+            </div>
+
+            <div className="flex flex-col gap-2">
                 <label htmlFor="lead" className="label">
                     How far ahead? <span className="normal-case">(hackathon applications close early)</span>
                 </label>
@@ -186,7 +218,8 @@ const SubscribeForm = ({ token, initial }: Props) => {
                     {token ? 'Save preferences' : 'Subscribe'}
                 </button>
                 <p className="text-light-200 text-center text-xs">
-                    One email a day at most, only when something matches. Unsubscribe in one click from any email.
+                    Only sent when something matches — quiet periods mean no email. Unsubscribe in one click from any
+                    email.
                 </p>
             </div>
         </form>

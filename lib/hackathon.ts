@@ -17,6 +17,11 @@ export interface TravelSignal {
     evidence?: string;
     checkedAt?: string;
     curated: boolean;
+    /** 'prior-edition' = seen at a past edition, not confirmed for this one. */
+    basis?: 'current' | 'prior-edition';
+    year?: number;
+    /** Ready-to-render phrase — keeps every surface wording this the same way. */
+    label: string;
 }
 
 /** Today in the feed's home zone — string date, lexical compare (I5). */
@@ -54,12 +59,27 @@ export function travelSignal(e: EventDoc): TravelSignal | null {
     if (e.category !== 'hackathon' || e.mode === 'online') return null;
     if (e.region !== 'US' && e.region !== 'CA') return null;
     const t = e.enrichment?.travel;
+    const status = t?.status ?? 'unknown';
+    const prior = t?.basis === 'prior-edition';
     const signal: TravelSignal = {
-        status: t?.status ?? 'unknown',
+        status,
         amount: t?.amount,
         evidence: t?.evidence,
         checkedAt: e.enrichment?.checkedAt,
         curated: e.enrichment?.source === 'curated',
+        basis: t?.basis,
+        year: t?.year,
+        // Never state a past edition's policy as this year's commitment.
+        label:
+            status === 'yes'
+                ? prior
+                    ? `Travel reimbursement offered in ${t?.year ?? 'past years'} — not yet confirmed for this edition`
+                    : `Travel reimbursement offered${t?.amount ? ` · ${t.amount}` : ''}`
+                : status === 'no'
+                  ? prior
+                      ? `No travel reimbursement in ${t?.year ?? 'past years'}`
+                      : 'No travel reimbursement'
+                  : 'Travel support not listed — check the event site',
     };
     if (e.region === 'CA' && signal.status === 'unknown') return null;
     return signal;

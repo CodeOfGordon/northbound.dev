@@ -92,7 +92,12 @@ const EventCard = ({ event }: Props) => {
                         {visibleTags.map((tag) => (
                             <span key={tag} className="chip text-light-200 text-[11px]">{tag}</span>
                         ))}
-                        {travel?.status === 'yes' && <span className="chip text-light-100 text-[11px]">Travel aid</span>}
+                        {travel?.status === 'yes' && (
+                            // Past-edition findings are flagged, never passed off as confirmed.
+                            <span className="chip text-light-100 text-[11px]" title={travel.label}>
+                                {travel.basis === 'prior-edition' ? 'Travel aid (past yrs)' : 'Travel aid'}
+                            </span>
+                        )}
                         {showApp ? (
                             appSignal.status === 'open' ? (
                                 <span className="text-primary ml-auto text-xs font-semibold">Apps open</span>

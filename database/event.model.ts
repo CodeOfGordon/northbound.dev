@@ -21,6 +21,14 @@ export interface EventEnrichment {
         status: 'yes' | 'no' | 'unknown';
         amount?: string;                              // e.g. "up to $500"
         evidence?: string;
+        /**
+         * Whether the evidence describes THIS edition or an earlier one. A
+         * past-edition finding is a decent predictor but not a promise, so the
+         * UI and the emails must word the two differently. (ADR-028)
+         */
+        basis?: 'current' | 'prior-edition';
+        /** Edition year the evidence came from (prior-edition only). */
+        year?: number;
     };
 }
 
@@ -77,6 +85,8 @@ const EnrichmentSchema = new Schema<EventEnrichment>(
             status: { type: String, enum: ['yes', 'no', 'unknown'], required: true },
             amount: { type: String },
             evidence: { type: String, maxlength: 280 },
+            basis: { type: String, enum: ['current', 'prior-edition'] },
+            year: { type: Number },
         },
     },
     { _id: false },

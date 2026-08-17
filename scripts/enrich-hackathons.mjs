@@ -307,6 +307,55 @@ async function renderText(url, isEnough = () => false) {
     }
 }
 
+/**
+ * Prior-edition lookup: when the current site says nothing about travel, check
+ * the previous editions — most of these hackathons archive them on year
+ * subdomains (2025.example.org). A past policy predicts the next one well
+ * enough to be worth surfacing, but it is NOT a promise, so findings are
+ * stamped basis:'prior-edition' + the year and worded differently everywhere
+ * they appear. Bounded to the last 3 editions: a hackathon that reimbursed
+ * once a decade ago tells us nothing. (ADR-028)
+ */
+const ARCHIVE_LOOKBACK_YEARS = 3;
+const ARCHIVE_TIMEOUT_MS = 8_000;
+
+async function fetchArchiveText(url) {
+    const res = await fetch(url, {
+        headers: { 'user-agent': UA, accept: 'text/html' },
+        signal: AbortSignal.timeout(ARCHIVE_TIMEOUT_MS),
+        redirect: 'follow',
+    });
+    if (!res.ok) throw new Error(String(res.status));
+    return pageText(await res.text());
+}
+
+/** First recent edition whose site states a travel policy, or null. */
+async function priorEditionTravel(host, thisYear, delayMs) {
+    const root = host.split('.').slice(-2).join('.');
+    for (let i = 1; i <= ARCHIVE_LOOKBACK_YEARS; i++) {
+        const year = thisYear - i;
+        const url = `https://${year}.${root}/`;
+        await sleep(delayMs);
+        let text = '';
+        try {
+            text = await fetchArchiveText(url);
+        } catch {
+            continue; // no archive for that year — very common
+        }
+        // Archived SPAs need the browser too, but only bother if the static
+        // pass looks empty AND mentions nothing useful.
+        if (text.length < 800 && !renderOff) {
+            const rendered = await renderText(url, (t) => classifyTravel(t).status !== 'unknown');
+            if (rendered) text = rendered;
+        }
+        const t = classifyTravel(text);
+        if (t.status !== 'unknown') {
+            return { ...t, basis: 'prior-edition', year, evidence: `${year} edition: ${t.evidence ?? ''}`.trim().slice(0, 280) };
+        }
+    }
+    return null;
+}
+
 /* ---- robots.txt ------------------------------------------------------------
  * These are small volunteer-run student sites, so we behave like a courteous
  * crawler: one robots.txt per host per run, cached, and we honor Disallow for
@@ -490,6 +539,13 @@ async function main() {
                     }
                 }
             }
+            // Nothing about travel on the current site — ask the recent editions.
+            if (travel.status === 'unknown') {
+                const prior = await priorEditionTravel(host, parseInt(anchorDate.slice(0, 4), 10), hostDelayMs);
+                if (prior) travel = prior;
+            } else {
+                travel.basis = 'current';
+            }
         } catch (e) {
             fetchStatus = e.status === 403 ? 'blocked' : 'fetch_failed';
         }
@@ -500,7 +556,7 @@ async function main() {
         const override = OVERRIDES[host] ?? OVERRIDES[host.split('.').slice(-2).join('.')];
         let source = 'site';
         if (override?.travel) {
-            travel = { ...override.travel };
+            travel = { basis: 'current', ...override.travel };
             source = 'curated';
         }
 
@@ -510,7 +566,13 @@ async function main() {
             source,
             fetchStatus,
             application: { status: application.status, ...(application.deadline ? { deadline: application.deadline } : {}), ...(application.evidence ? { evidence: application.evidence } : {}) },
-            travel: { status: travel.status, ...(travel.amount ? { amount: travel.amount } : {}), ...(travel.evidence ? { evidence: travel.evidence } : {}) },
+            travel: {
+                status: travel.status,
+                ...(travel.amount ? { amount: travel.amount } : {}),
+                ...(travel.evidence ? { evidence: travel.evidence } : {}),
+                ...(travel.basis ? { basis: travel.basis } : {}),
+                ...(travel.year ? { year: travel.year } : {}),
+            },
         };
 
         if (!DRY_RUN) {
@@ -525,7 +587,7 @@ async function main() {
                 await events.updateOne({ _id: doc._id }, update);
             }
         }
-        summary.push({ host, docs: docs.length, fetch: fetchStatus, apps: application.status, deadline: application.deadline ?? '', travel: travel.status, src: source, js: usedRender ? 'yes' : '' });
+        summary.push({ host, docs: docs.length, fetch: fetchStatus, apps: application.status, deadline: application.deadline ?? '', travel: travel.status + (travel.basis === 'prior-edition' ? ` (${travel.year})` : ''), src: source, js: usedRender ? 'yes' : '' });
         await sleep(hostDelayMs);
     }
 

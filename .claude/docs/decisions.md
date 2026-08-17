@@ -516,6 +516,34 @@ badges and the digest's applications-open section.
 
 ---
 
+## ADR-028 — Subscriber-chosen cadence; prior-edition travel evidence is labelled (2026-08-17)
+
+**Cadence is the subscriber's choice, defaulting to weekly.** Hackathon news moves in
+weeks, and a daily email that is usually empty trains you to ignore it — but the cadence
+is a preference, not a product opinion, so `frequency` (`daily|weekly|biweekly|monthly`)
+lives on the subscriber and the send guard became "≥ N calendar days since `lastSentAt`"
+(which still makes same-day reruns idempotent).
+
+The trap this creates: a weekly reader would learn about a deadline days after it passed.
+So **the deadline window widens with the cadence** — daily keeps the classic 7/3/1 nudges,
+everything slower reports deadlines falling before their *next* email plus a 3-day margin
+(the prefetch query widened to today+33 to cover monthly). Applications-open items need no
+such handling: they are state-based per subscriber, so they simply wait for the next send.
+
+**Prior-edition travel evidence.** Most sites never state a travel policy for the current
+edition, but many archive previous editions on year subdomains. Those are checked only when
+the current site is silent, only for the **last 3 editions** (a policy from a decade ago
+predicts nothing), and results are stamped `basis:'prior-edition'` + `year`. Wording is
+different everywhere it surfaces — site aside, card chip ("Travel aid (past yrs)"), and the
+email all say *"offered in {year} — not yet confirmed for this edition"* rather than
+asserting it. `travelSignal()` builds that phrase once so no surface can drift.
+Rejected: Devpost mirrors of past editions — hacknc-2025 carries no policy text at all and
+swamphacks' page produced a false positive from a *prize* named "Travel Essential Portable
+Charger". The `usTravelOnly` filter still accepts prior-edition evidence (gordon: "doesn't
+have to be exactly accurate"), which is safe precisely because the label is honest.
+
+---
+
 ## Known follow-ups / tech debt
 - ~~`database/mongodb.ts` stray `v8` import~~ — already removed.
 - ~~`normalizeDate()` UTC day-shift~~ — **fixed 2026-06-10**: `normalizeDate`/`normalizeTime` extract wall-clock parts in the event's IANA timezone (`Intl.DateTimeFormat`); `event.model.ts` reuses the same helpers.

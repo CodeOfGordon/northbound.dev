@@ -7,6 +7,7 @@ export const dynamic = 'force-dynamic';
 
 const TOPICS = ['hackathon', 'company', 'community'];
 const REGIONS = ['CA', 'US', 'ONLINE'];
+const FREQUENCIES = ['daily', 'weekly', 'biweekly', 'monthly'];
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 function pick(value: unknown, allowed: string[]): string[] {
@@ -30,6 +31,7 @@ export async function POST(request: NextRequest) {
     if (!regions.length) return NextResponse.json({ error: 'Pick at least one region.' }, { status: 400 });
 
     const usTravelOnly = body?.usTravelOnly === true;
+    const frequency = FREQUENCIES.includes(body?.frequency) ? body.frequency : 'weekly';
     const minDaysOutRaw = Number(body?.minDaysOut);
     const minDaysOut = Number.isFinite(minDaysOutRaw) ? Math.min(Math.max(Math.round(minDaysOutRaw), 0), 180) : 21;
 
@@ -40,7 +42,7 @@ export async function POST(request: NextRequest) {
     if (token) {
         const updated = await Subscriber.findOneAndUpdate(
             { token },
-            { $set: { topics, regions, usTravelOnly, minDaysOut, status: 'active' }, $unset: { unsubscribedAt: '' } },
+            { $set: { topics, regions, usTravelOnly, minDaysOut, frequency, status: 'active' }, $unset: { unsubscribedAt: '' } },
             { new: true },
         ).lean<{ email: string } | null>();
         if (!updated) return NextResponse.json({ error: 'That link is no longer valid.' }, { status: 404 });
@@ -57,7 +59,7 @@ export async function POST(request: NextRequest) {
     await Subscriber.updateOne(
         { email },
         {
-            $set: { topics, regions, usTravelOnly, minDaysOut, status: 'active' },
+            $set: { topics, regions, usTravelOnly, minDaysOut, frequency, status: 'active' },
             $unset: { unsubscribedAt: '' },
             $setOnInsert: { email, token: newSubscriberToken(), notifiedOpenIds: [] },
         },
