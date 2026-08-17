@@ -10,7 +10,7 @@ Runbook for operating the running system. Northbound is an event aggregator: a N
 Two hard gates dominate operations (full rules in **northbound-change-control**):
 
 - **G1 — $0 hosting**: `eventbrite` and `meetup` run paid Apify actors. Never schedule them; never trigger them without gordon's explicit prior approval. Everything else is free direct fetches.
-- **G2 — prod DB is sacred**: no writes outside the three sanctioned nightly writers (the scrape pipeline; the enrichment script's `enrichment`-subdoc writes, ADR-020; the digest's `meta`/`notifiedOpenAt` writes, ADR-021/022) without explicit approval; the MongoDB MCP server is `--readOnly` (`.mcp.json`); destructive ops need a backup step first.
+- **G2 — prod DB is sacred**: no writes outside the sanctioned writers (the scrape pipeline; the enrichment script's `enrichment`-subdoc writes, ADR-020; the digest's per-subscriber cursor/`notifiedOpenIds` writes and the public `/api/subscribe`+`/api/unsubscribe` routes, ADR-026) without explicit approval; the MongoDB MCP server is `--readOnly` (`.mcp.json`); destructive ops need a backup step first.
 
 ## Dev server
 
@@ -115,35 +115,36 @@ node --env-file=.env.local scripts/enrich-hackathons.mjs [--dry-run] [--budget N
   rules) lives in `northbound-source-platforms-reference`; this section is only the
   operator-facing "how do I run it" surface.
 
-### Digest trigger (`POST /api/digest`)
+### Digest (`scripts/send-digest.mjs` + `POST /api/digest`)
 
-Same Bearer-`CRON_SECRET` auth contract as `/api/refresh`. Safe to call by hand against the
-dev server:
+**The route never sends email.** Vercel blocks outbound SMTP, so `/api/digest` only
+*composes* (one personalized message per active subscriber, no state written) and later
+*confirms*; the GitHub runner does the Gmail SMTP send in between (ADR-025/026).
+Recipients come from the `subscribers` collection (people sign up at `/subscribe`) — there
+is no recipient env var.
+
+Operate it through the script, not raw curl:
 
 ```bash
-# Dry run — composes and logs, sends nothing, writes no cursor/marker state
-curl -X POST http://localhost:3000/api/digest \
-  -H "Authorization: Bearer $CRON_SECRET" \
-  -H "Content-Type: application/json" \
-  -d '{"dryRun":true}'
+# Compose + print what WOULD go out, per subscriber. Sends nothing, confirms nothing.
+export SITE_URL=http://localhost:3000 GMAIL_USER=... GMAIL_APP_PASSWORD=...
+node scripts/send-digest.mjs --dry-run
 
-# Real send (respects the same-day guard — a second same-day call no-ops unless forced)
-curl -X POST http://localhost:3000/api/digest \
-  -H "Authorization: Bearer $CRON_SECRET" \
-  -H "Content-Type: application/json" \
-  -d '{}'
+# Real send (per-subscriber same-day guard applies)
+node scripts/send-digest.mjs
 
-# Force past the same-day guard (re-sends today's digest — use sparingly, it is a real email)
-curl -X POST http://localhost:3000/api/digest \
-  -H "Authorization: Bearer $CRON_SECRET" \
-  -H "Content-Type: application/json" \
-  -d '{"force":true}'
+# Re-send today (bypasses the same-day guard — these are real emails)
+node scripts/send-digest.mjs --force
 ```
 
-Fails closed with `{ok:false, sent:false, error:'RESEND_API_KEY and/or DIGEST_EMAIL not set'}`
-(HTTP 500 — the route maps `result.ok === false` to a 500 status) if either Vercel env var is
-missing — see the Deploy section for the env catalog addition. `since` (ISO datetime) is also
-accepted to override the cursor window start for dry-run testing.
+The route itself, if you need it directly: `{mode:'compose', force?, dryRun?}` returns
+`{messages:[{subscriberId,to,subject,html,text,headers,openIds,counts}], cursor}`;
+`{mode:'confirm', cursor, results:[{subscriberId,openIds}]}` advances each delivered
+subscriber's cursor and appends their `notifiedOpenIds`. Only confirm what actually sent —
+unconfirmed subscribers simply retry next run (at-least-once).
+
+Missing Gmail secrets are a **soft skip** (green job + `::warning::`), not a failure, so a
+half-configured deployment never paints the nightly run red.
 
 ### Reading and driving the workflow
 
@@ -165,7 +166,7 @@ Known stale doc: `docs/scheduled-scrape.md` "Schedule" section still claims a we
 
 - Project: **northbound-dev** (`.vercel/project.json`: `projectId prj_du0T1fsIlf8tU6yfHeqFfsNTXxFp`), Vercel Hobby tier, paired with Atlas free tier. Git remote is `https://github.com/CodeOfGordon/northbound.dev.git`.
 - No `vercel.json` exists → no Vercel-side cron, no route config overrides. GitHub Actions is the only scheduler.
-- Deployment env vars come from `.env.example`'s catalog — at minimum `MONGODB_URI` and `CRON_SECRET`; `APIFY_TOKEN` only if paid sources will ever run on-host (they currently should not — G1). **New 2026-08-16 (ADR-021):** `RESEND_API_KEY` and `DIGEST_EMAIL` must also be set on Vercel for `/api/digest` to send — without them the route fails closed (500, see above) rather than silently no-op'ing. Note the sender is the unverified-domain default `onboarding@resend.dev`, which only delivers to the Resend account's own owner email — so `DIGEST_EMAIL` must be the address that owns the Resend account.
+- Deployment env vars come from `.env.example`'s catalog — at minimum `MONGODB_URI` and `CRON_SECRET`; `APIFY_TOKEN` only if paid sources will ever run on-host (they currently should not — G1). **Updated 2026-08-17 (ADR-026):** the digest needs **no Vercel env vars** — Resend is gone, recipients live in the `subscribers` collection, and sending happens in the GitHub runner via repo secrets `GMAIL_USER` + `GMAIL_APP_PASSWORD` (Google App Password, requires 2FA on that account). `NEXT_PUBLIC_SITE_URL` should be `https://northbound-dev.vercel.app` — **that is the live host**; `northbound.vercel.app` 404s and was a real bug source (email links now derive from `request.nextUrl.origin` instead).
 - **UNVERIFIED — deploy trigger**: whether Vercel auto-deploys on push to `main` or deploys run via CLI is not provable from the repo. Check before relying on it: Vercel dashboard → northbound-dev → Settings → Git, or `vercel project inspect northbound-dev` (a global `vercel` CLI is installed as of 2026-07-20; it needs an authenticated session). Until verified, hold both cautions at once: treat every push as if it MAY deploy to prod (so never push unrequested — G4), and never rely on a push HAVING deployed (verify in the dashboard). Same wording in `northbound-change-control` G4.
 - **OPEN — canonical URL**: `app/layout.tsx` (`const SITE_URL`) falls back to `https://northbound.vercel.app`, but the Vercel project is `northbound-dev` (→ `northbound-dev.vercel.app`, the hostname the workflow comments and docs use). `NEXT_PUBLIC_SITE_URL` is consumed there but absent from `.env.example`. Resolution is pending the owner's domain/repo rename — do not "fix" the fallback without asking (see **northbound-change-control**).
 - **UNVERIFIED — function-duration ceiling**: `app/api/refresh/route.ts` sets `maxDuration = 300`, but `scrape.yml`'s comments assume "Vercel Hobby's ~60 s function cap". Which binds in production is unproven. **Planning assumption: 60s** for anything scheduled — which is why the cron sends one POST per source and why paid (slow, 1–5 min) Apify runs must be driven from a local machine, never on-host.
