@@ -56,7 +56,12 @@ const isOpen = (d: any): boolean =>
 export async function runDigest(opts: DigestOptions = {}): Promise<DigestResult> {
     const apiKey = process.env.RESEND_API_KEY;
     const to = process.env.DIGEST_EMAIL;
-    if (!apiKey || !to) return { ok: false, sent: false, error: 'RESEND_API_KEY and/or DIGEST_EMAIL not set' };
+    // Not-yet-configured is a soft skip (green job, reason in the step log) —
+    // a hard 500 would paint every nightly run red until Resend is set up.
+    // A send FAILURE with config present still errors loudly below.
+    if (!apiKey || !to) {
+        return { ok: true, sent: false, skipped: 'not-configured: RESEND_API_KEY and/or DIGEST_EMAIL unset' };
+    }
 
     const runStarted = new Date();
     const today = todayInToronto();
