@@ -4,12 +4,17 @@ import { runDigest } from '@/lib/notify/digest';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic'; // never cache a mutation endpoint
-export const maxDuration = 60;          // a few queries + one HTTPS call
+export const maxDuration = 60;          // a few queries + rendering
 
 /**
- * Daily digest trigger — called by the GitHub Actions `digest` job after the
- * scrape + enrich jobs. Body (all optional): { dryRun, since, force } — see
- * lib/notify/digest.ts. Same auth contract as /api/refresh.
+ * Digest build endpoint, driven by the GitHub Actions `digest` job after the
+ * scrape + enrich jobs (scripts/send-digest.mjs does the Gmail SMTP send —
+ * Vercel blocks outbound SMTP).
+ *
+ *   { mode:'compose', force? }  → one rendered message per active subscriber
+ *   { mode:'confirm', cursor, results:[{subscriberId, openIds}] } → record sends
+ *
+ * Same auth contract as /api/refresh.
  */
 export async function POST(request: NextRequest) {
     // Auth — fail closed if the secret is unset
@@ -20,18 +25,27 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json().catch(() => ({}));
-    const strings = (v: unknown, cap: number): string[] | undefined =>
-        Array.isArray(v) ? v.filter((s): s is string => typeof s === 'string').slice(0, cap) : undefined;
+
+    const results = Array.isArray(body?.results)
+        ? body.results
+              .filter((r: unknown): r is { subscriberId: string; openIds?: string[] } =>
+                  !!r && typeof (r as { subscriberId?: unknown }).subscriberId === 'string')
+              .slice(0, 200)
+              .map((r: { subscriberId: string; openIds?: unknown }) => ({
+                  subscriberId: r.subscriberId,
+                  openIds: Array.isArray(r.openIds)
+                      ? r.openIds.filter((id): id is string => typeof id === 'string').slice(0, 500)
+                      : [],
+              }))
+        : undefined;
 
     await connectDB();
     const result = await runDigest({
-        dryRun: body?.dryRun === true,
-        since: typeof body?.since === 'string' ? body.since : undefined,
+        mode: body?.mode === 'confirm' ? 'confirm' : 'compose',
         force: body?.force === true,
-        mode: body?.mode === 'compose' || body?.mode === 'confirm' ? body.mode : undefined,
-        to: strings(body?.to, 50),
+        dryRun: body?.dryRun === true,
         cursor: typeof body?.cursor === 'string' ? body.cursor : undefined,
-        openIds: strings(body?.openIds, 500),
+        results,
     });
 
     return NextResponse.json(result, { status: result.ok ? 200 : 500 });

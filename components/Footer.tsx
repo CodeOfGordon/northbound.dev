@@ -17,6 +17,10 @@ const Footer = async () => {
                         Aggregated from Luma, Eventbrite, Meetup, MLH &amp; company sites ·{' '}
                         <Link href="/events" className="hover:text-primary underline underline-offset-4">
                             Browse all
+                        </Link>{' '}
+                        ·{' '}
+                        <Link href="/subscribe" className="hover:text-primary underline underline-offset-4">
+                            Email digest
                         </Link>
                     </p>
                 </div>

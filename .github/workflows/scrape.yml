@@ -144,14 +144,13 @@ jobs:
       CRON_SECRET: ${{ secrets.CRON_SECRET }}
       GMAIL_USER: ${{ secrets.GMAIL_USER }}
       GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
-      DIGEST_EMAIL: ${{ secrets.DIGEST_EMAIL }}
     steps:
       - name: Check configuration
         id: cfg
         run: |
-          if [ -z "$SITE_URL" ] || [ -z "$CRON_SECRET" ] || [ -z "$GMAIL_USER" ] || [ -z "$GMAIL_APP_PASSWORD" ] || [ -z "$DIGEST_EMAIL" ]; then
+          if [ -z "$SITE_URL" ] || [ -z "$CRON_SECRET" ] || [ -z "$GMAIL_USER" ] || [ -z "$GMAIL_APP_PASSWORD" ]; then
             echo "configured=false" >> "$GITHUB_OUTPUT"
-            echo "::warning::digest secrets incomplete (need SITE_URL, CRON_SECRET, GMAIL_USER, GMAIL_APP_PASSWORD, DIGEST_EMAIL) — skipping."
+            echo "::warning::digest secrets incomplete (need SITE_URL, CRON_SECRET, GMAIL_USER, GMAIL_APP_PASSWORD) — skipping."
           else
             echo "configured=true" >> "$GITHUB_OUTPUT"
           fi

@@ -1,232 +1,223 @@
 /**
- * Digest orchestration — assembles the three sections, sends via Resend, and
- * advances state ONLY on send success (at-least-once: a failure means the same
- * digest is retried next run; a duplicate email to yourself beats a silent
- * miss). State (ADR-021/022):
- *   - meta {key:'digest'}: lastDigestAt = considered-through cursor (advances
- *     on empty runs too, keeping the window bounded); lastSentAt = same-day
- *     rerun guard.
- *   - events.notifiedOpenAt: per-event "applications-open alert already sent"
- *     marker — the digest notifies about the STATE open-and-not-yet-told, so
- *     it self-heals across reruns, rescrapes, and enrichment re-stamps.
+ * Digest orchestration — builds ONE personalized email per active subscriber
+ * from their own filters and their own delivery cursor, then hands the rendered
+ * messages to the GitHub Actions runner, which does the actual Gmail SMTP send
+ * (Vercel blocks outbound SMTP). State advances only after the runner confirms
+ * a successful send — at-least-once: a failure means the same digest is retried
+ * next run, never silently dropped. (ADR-025/026)
+ *
+ * Sections per subscriber:
+ *   A "New events for you"   — created since their cursor, matching their rules
+ *   B "Applications now open" — hackathons open and not yet announced to THEM
+ *   C "Deadlines approaching" — application deadlines 7/3/1 days out (stateless)
  */
 import 'server-only';
-import { Event, DigestMeta } from '@/database';
-import { interests } from '@/config/interests';
-import { matchEvent } from '@/lib/notify/match';
-import { renderDigest, sendEmail, type DigestItem, type DigestSections } from '@/lib/notify/email';
+import { Event, Subscriber, DigestMeta } from '@/database';
+import { matchEvent, rulesForSubscriber, type EventLike, type InterestRule } from '@/lib/notify/match';
+import { renderDigest, type DigestItem, type DigestSections } from '@/lib/notify/email';
 import { todayInToronto } from '@/lib/events';
 import { addDaysISO, monthDay } from '@/lib/format';
 
 export interface DigestOptions {
-    /** Compose + send, but skip every state write (cursor, markers). */
-    dryRun?: boolean;
-    /** Override the cursor window start (dry-run testing), ISO datetime. */
-    since?: string;
-    /** Bypass the same-day guard. */
+    /** 'compose' (default): build + render, no send. 'confirm': record a send. */
+    mode?: 'compose' | 'confirm';
+    /** Bypass the per-subscriber same-day guard. */
     force?: boolean;
-    /**
-     * 'send' (default): full Resend send — local testing lever.
-     * 'compose': build + render only, return the email + state handles; the GH
-     *   runner sends via Gmail SMTP (Vercel blocks outbound SMTP — ADR-025).
-     * 'confirm': the runner's send succeeded — advance cursor + stamp markers.
-     */
-    mode?: 'send' | 'compose' | 'confirm';
-    /** compose: recipient list override (the runner passes its repo secret). */
-    to?: string[];
-    /** confirm: the cursor returned by compose. */
+    /** Compose without advancing cursors (testing). */
+    dryRun?: boolean;
+    /** confirm: the cursor compose returned. */
     cursor?: string;
-    /** confirm: the openIds returned by compose. */
-    openIds?: string[];
+    /** confirm: which subscribers were delivered, and what was announced to them. */
+    results?: { subscriberId: string; openIds?: string[] }[];
+}
+
+export interface DigestMessage {
+    subscriberId: string;
+    to: string[];
+    subject: string;
+    html: string;
+    text: string;
+    headers: Record<string, string>;
+    /** Event ids announced as "applications open" — stamped on confirm. */
+    openIds: string[];
+    counts: { newEvents: number; appsOpen: number; deadlines: number };
 }
 
 export interface DigestResult {
     ok: boolean;
-    sent: boolean;
-    initialized?: boolean;
+    messages?: DigestMessage[];
+    cursor?: string;
+    subscribers?: number;
+    confirmed?: number;
     skipped?: string;
     error?: string;
-    counts?: { newEvents: number; appsOpen: number; deadlines: number };
-    cursor?: string;
-    /** compose: nothing to send (cursor already advanced server-side). */
-    empty?: boolean;
-    /** compose payload for the runner. */
-    subject?: string;
-    html?: string;
-    text?: string;
-    to?: string[];
-    openIds?: string[];
-    /** confirm acknowledged. */
-    confirmed?: boolean;
 }
 
-const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://northbound.vercel.app';
+const SITE_URL = (process.env.NEXT_PUBLIC_SITE_URL ?? 'https://northbound.vercel.app').replace(/\/$/, '');
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
-function toItem(d: any, labels?: string[], deadline?: string): DigestItem {
-    return {
-        title: d.title, slug: d.slug, date: d.date, endDate: d.endDate,
-        city: d.city, country: d.country, region: d.region, mode: d.mode,
-        url: d.url, labels, deadline,
-    };
-}
 
 /** Resolved application deadline — scrape field wins, else enrichment. */
 const deadlineOf = (d: any): string | undefined => d.applicationDeadline ?? d.enrichment?.application?.deadline;
 const isOpen = (d: any): boolean =>
     d.applicationStatus === 'open' || (d.applicationStatus == null && d.enrichment?.application?.status === 'open');
 
-export async function runDigest(opts: DigestOptions = {}): Promise<DigestResult> {
-    // confirm: the runner delivered the composed email — advance state exactly
-    // as a successful in-process send would have. Needs no section building.
-    if (opts.mode === 'confirm') {
-        if (!opts.cursor || Number.isNaN(Date.parse(opts.cursor))) {
-            return { ok: false, sent: false, error: 'confirm: missing/invalid cursor' };
-        }
-        const at = new Date(opts.cursor);
-        await DigestMeta.updateOne(
-            { key: 'digest' },
-            { $set: { lastDigestAt: at, lastSentAt: at, lastResult: 'smtp-confirmed' }, $setOnInsert: { key: 'digest' } },
-            { upsert: true },
-        );
-        if (opts.openIds?.length) {
-            await Event.updateMany({ _id: { $in: opts.openIds } }, { $set: { notifiedOpenAt: at } });
-        }
-        return { ok: true, sent: true, confirmed: true, cursor: opts.cursor };
-    }
+function travelNote(d: any): string | undefined {
+    const t = d.enrichment?.travel;
+    if (!t || t.status !== 'yes') return undefined;
+    return t.amount ? `Travel reimbursement · ${t.amount}` : 'Travel reimbursement offered';
+}
 
-    const mode = opts.mode ?? 'send';
-    const apiKey = process.env.RESEND_API_KEY;
-    // Recipients: the runner's repo secret (compose body) wins; env is the
-    // fallback for the local send path. Comma-separated.
-    const to = opts.to?.length
-        ? opts.to
-        : (process.env.DIGEST_EMAIL ?? '').split(',').map((s) => s.trim()).filter(Boolean);
-    // Not-yet-configured is a soft skip (green job, reason in the step log) —
-    // a hard 500 would paint every nightly run red until email is set up.
-    // A send FAILURE with config present still errors loudly below.
-    if (!to.length || (mode === 'send' && !apiKey)) {
-        return { ok: true, sent: false, skipped: 'not-configured: recipients and/or RESEND_API_KEY unset' };
-    }
+function toItem(d: any, labels?: string[]): DigestItem {
+    return {
+        title: d.title, slug: d.slug, date: d.date, endDate: d.endDate,
+        city: d.city, country: d.country, region: d.region, mode: d.mode,
+        url: d.url, labels, deadline: deadlineOf(d), travel: travelNote(d),
+    };
+}
+
+/** Toronto calendar date of a timestamp — the same-day rerun guard. */
+function torontoDay(d: Date): string {
+    return new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'America/Toronto', year: 'numeric', month: '2-digit', day: '2-digit',
+    }).format(d);
+}
+
+export async function runDigest(opts: DigestOptions = {}): Promise<DigestResult> {
+    if (opts.mode === 'confirm') return confirmSends(opts);
 
     const runStarted = new Date();
     const today = todayInToronto();
 
-    const meta = await DigestMeta.findOne({ key: 'digest' }).lean<{ lastDigestAt?: Date; lastSentAt?: Date }>();
+    const subs = await Subscriber.find({ status: 'active' }).lean<any[]>();
+    if (!subs.length) return { ok: true, messages: [], subscribers: 0, skipped: 'no active subscribers' };
 
-    // First run ever: initialize the cursor without emailing history.
-    if (!meta?.lastDigestAt && !opts.since) {
-        if (!opts.dryRun) {
-            await DigestMeta.updateOne(
-                { key: 'digest' },
-                { $set: { lastDigestAt: runStarted, lastResult: 'initialized' }, $setOnInsert: { key: 'digest' } },
-                { upsert: true },
-            );
+    // Widest window across subscribers — candidates are fetched once and
+    // filtered per subscriber in memory (the lists are tens of docs).
+    const cursors = subs.map((s) => (s.lastDigestAt ? new Date(s.lastDigestAt).getTime() : runStarted.getTime()));
+    const minSince = new Date(Math.min(...cursors));
+    const deadlineTargets = [addDaysISO(today, 7), addDaysISO(today, 3), addDaysISO(today, 1)];
+
+    const [created, openDocs, deadlineDocs] = await Promise.all([
+        Event.find({ createdAt: { $gt: minSince }, date: { $gte: today } }).lean<any[]>(),
+        Event.find({
+            category: 'hackathon',
+            $and: [
+                { $or: [{ applicationStatus: 'open' }, { 'enrichment.application.status': 'open' }] },
+                { $or: [{ date: { $gte: today } }, { endDate: { $gte: today } }] },
+            ],
+        }).lean<any[]>(),
+        Event.find({
+            category: 'hackathon',
+            $or: [
+                { applicationDeadline: { $in: deadlineTargets } },
+                { 'enrichment.application.deadline': { $in: deadlineTargets } },
+            ],
+        }).lean<any[]>(),
+    ]);
+
+    const messages: DigestMessage[] = [];
+    const emptyCursorIds: any[] = [];
+
+    for (const sub of subs) {
+        // Same-day guard: reruns must not double-send (section C is date-derived
+        // and would repeat).
+        if (!opts.force && sub.lastSentAt && torontoDay(new Date(sub.lastSentAt)) === today) continue;
+
+        const rules: InterestRule[] = rulesForSubscriber({
+            topics: sub.topics ?? [],
+            regions: sub.regions ?? [],
+            usTravelOnly: !!sub.usTravelOnly,
+            minDaysOut: sub.minDaysOut ?? 0,
+        });
+        if (!rules.length) continue;
+
+        const since = sub.lastDigestAt ? new Date(sub.lastDigestAt) : runStarted; // new subscriber: no history blast
+        const notified = new Set<string>((sub.notifiedOpenIds ?? []).map(String));
+
+        // A — new events matching their interests
+        const newEvents: DigestItem[] = [];
+        for (const d of created) {
+            if (new Date(d.createdAt) <= since) continue;
+            const labels = matchEvent(d as EventLike, rules, today);
+            if (labels.length) newEvents.push(toItem(d, labels));
         }
-        return { ok: true, sent: false, initialized: true, cursor: runStarted.toISOString() };
-    }
 
-    // Same-day guard — workflow reruns must not double-send (deadline section is
-    // date-derived and would repeat).
-    const lastSentDay = meta?.lastSentAt
-        ? new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Toronto', year: 'numeric', month: '2-digit', day: '2-digit' }).format(meta.lastSentAt)
-        : null;
-    if (lastSentDay === today && !opts.force && !opts.dryRun) {
-        return { ok: true, sent: false, skipped: 'already-sent-today' };
-    }
-
-    const since = opts.since ? new Date(opts.since) : meta!.lastDigestAt!;
-
-    // Section A — new events since the cursor, upcoming only, matching interests.
-    const created = await Event.find({ createdAt: { $gt: since }, date: { $gte: today } }).lean();
-    const newEvents: DigestItem[] = [];
-    for (const d of created as any[]) {
-        const labels = matchEvent(d, interests, today);
-        if (labels.length) newEvents.push(toItem(d, labels, deadlineOf(d)));
-    }
-
-    // Section B — hackathons whose applications are open and not yet notified.
-    const openDocs = await Event.find({
-        category: 'hackathon',
-        notifiedOpenAt: { $exists: false },
-        $and: [
-            { $or: [{ applicationStatus: 'open' }, { 'enrichment.application.status': 'open' }] },
-            { $or: [{ date: { $gte: today } }, { endDate: { $gte: today } }] },
-        ],
-    }).lean();
-    const appsOpen: DigestItem[] = [];
-    const appsOpenIds: unknown[] = [];
-    for (const d of openDocs as any[]) {
-        if (!isOpen(d)) continue; // scrape says closed/not_yet — overrides enrichment
-        const deadline = deadlineOf(d);
-        if (deadline && deadline < today) continue; // stale open — deadline passed
-        appsOpen.push(toItem(d, undefined, deadline));
-        appsOpenIds.push(d._id);
-    }
-
-    // Section C — application deadlines exactly 7/3/1 days out (stateless: each
-    // event appears on those three days only, no extra markers needed).
-    const targets = [addDaysISO(today, 7), addDaysISO(today, 3), addDaysISO(today, 1)];
-    const deadlineDocs = await Event.find({
-        category: 'hackathon',
-        $or: [{ applicationDeadline: { $in: targets } }, { 'enrichment.application.deadline': { $in: targets } }],
-    }).lean();
-    const deadlines: DigestItem[] = [];
-    for (const d of deadlineDocs as any[]) {
-        const deadline = deadlineOf(d);
-        if (!deadline || !targets.includes(deadline)) continue;
-        if (!isOpen(d)) continue;
-        deadlines.push(toItem(d, undefined, deadline));
-    }
-
-    const sections: DigestSections = { newEvents, appsOpen, deadlines };
-    const counts = { newEvents: newEvents.length, appsOpen: appsOpen.length, deadlines: deadlines.length };
-
-    // Nothing to say: advance the considered-through cursor (bounded window), no email.
-    if (!counts.newEvents && !counts.appsOpen && !counts.deadlines) {
-        if (!opts.dryRun) {
-            await DigestMeta.updateOne({ key: 'digest' }, { $set: { lastDigestAt: runStarted, lastResult: 'empty' } });
+        // B — applications open, not yet announced to THIS subscriber
+        const appsOpen: DigestItem[] = [];
+        const openIds: string[] = [];
+        for (const d of openDocs) {
+            if (notified.has(String(d._id))) continue;
+            if (!isOpen(d)) continue; // scrape status overrides a stale enrichment 'open'
+            const deadline = deadlineOf(d);
+            if (deadline && deadline < today) continue;
+            if (!matchEvent(d as EventLike, rules, today).length) continue;
+            appsOpen.push(toItem(d));
+            openIds.push(String(d._id));
         }
-        return { ok: true, sent: false, empty: true, counts, cursor: runStarted.toISOString() };
-    }
 
-    const { subject, html, text } = renderDigest(sections, SITE_URL, monthDay(today));
+        // C — deadlines exactly 7/3/1 days out (stateless: three reminders max)
+        const deadlines: DigestItem[] = [];
+        for (const d of deadlineDocs) {
+            const deadline = deadlineOf(d);
+            if (!deadline || !deadlineTargets.includes(deadline)) continue;
+            if (!isOpen(d)) continue;
+            if (!matchEvent(d as EventLike, rules, today).length) continue;
+            deadlines.push(toItem(d));
+        }
 
-    // compose: hand the rendered email + state handles to the runner; nothing
-    // is sent and no state moves until its confirm call comes back.
-    if (mode === 'compose') {
-        return {
-            ok: true,
-            sent: false,
-            empty: false,
-            subject,
-            html,
-            text,
-            to,
-            openIds: appsOpenIds.map(String),
+        const counts = { newEvents: newEvents.length, appsOpen: appsOpen.length, deadlines: deadlines.length };
+        if (!counts.newEvents && !counts.appsOpen && !counts.deadlines) {
+            emptyCursorIds.push(sub._id); // nothing to say — just advance their window
+            continue;
+        }
+
+        const sections: DigestSections = { newEvents, appsOpen, deadlines };
+        const rendered = renderDigest(sections, SITE_URL, monthDay(today), {
+            email: sub.email,
+            unsubscribeUrl: `${SITE_URL}/unsubscribe?token=${sub.token}`,
+            oneClickUrl: `${SITE_URL}/api/unsubscribe?token=${sub.token}`,
+            manageUrl: `${SITE_URL}/subscribe?token=${sub.token}`,
+        });
+
+        messages.push({
+            subscriberId: String(sub._id),
+            to: [sub.email],
+            ...rendered,
+            openIds,
             counts,
-            cursor: runStarted.toISOString(),
-        };
+        });
     }
 
-    const sendError = await sendEmail({ apiKey: apiKey!, to, subject, html, text });
-    if (sendError) return { ok: false, sent: false, error: sendError, counts };
-
-    // Send confirmed — advance state. Best-effort (a bookkeeping failure yields
-    // at worst a duplicate tomorrow, never a miss).
-    if (!opts.dryRun) {
-        try {
-            await DigestMeta.updateOne(
-                { key: 'digest' },
-                { $set: { lastDigestAt: runStarted, lastSentAt: runStarted, lastResult: JSON.stringify(counts) } },
-            );
-            if (appsOpenIds.length) {
-                await Event.updateMany({ _id: { $in: appsOpenIds } }, { $set: { notifiedOpenAt: runStarted } });
-            }
-        } catch (e) {
-            console.warn('digest: bookkeeping write failed —', (e as Error).message);
-        }
+    // Advance the considered-through cursor for subscribers with nothing to send,
+    // so their next window stays bounded. (Nothing was delivered, so no markers.)
+    if (emptyCursorIds.length && !opts.dryRun) {
+        await Subscriber.updateMany({ _id: { $in: emptyCursorIds } }, { $set: { lastDigestAt: runStarted } });
     }
 
-    return { ok: true, sent: true, counts, cursor: runStarted.toISOString() };
+    return { ok: true, messages, cursor: runStarted.toISOString(), subscribers: subs.length };
+}
+
+/** The runner delivered these messages — advance each subscriber's state. */
+async function confirmSends(opts: DigestOptions): Promise<DigestResult> {
+    if (!opts.cursor || Number.isNaN(Date.parse(opts.cursor))) {
+        return { ok: false, error: 'confirm: missing/invalid cursor' };
+    }
+    const at = new Date(opts.cursor);
+    const results = opts.results ?? [];
+
+    for (const r of results) {
+        const update: Record<string, unknown> = { $set: { lastDigestAt: at, lastSentAt: at } };
+        if (r.openIds?.length) update.$addToSet = { notifiedOpenIds: { $each: r.openIds } };
+        await Subscriber.updateOne({ _id: r.subscriberId }, update);
+    }
+
+    // Run log — observability only; per-subscriber cursors are the real state.
+    await DigestMeta.updateOne(
+        { key: 'digest' },
+        { $set: { lastDigestAt: at, lastSentAt: at, lastResult: `sent:${results.length}` }, $setOnInsert: { key: 'digest' } },
+        { upsert: true },
+    );
+
+    return { ok: true, confirmed: results.length, cursor: opts.cursor };
 }

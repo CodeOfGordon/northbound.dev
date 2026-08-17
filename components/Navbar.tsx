@@ -28,6 +28,14 @@ const Navbar = () => (
                         </Link>
                     </li>
                 ))}
+                <li>
+                    <Link
+                        href="/subscribe"
+                        className="border-border-dark text-foreground hover:border-primary/50 hover:text-primary ml-1 rounded-md border px-3 py-1.5 text-sm font-medium transition-colors max-sm:px-2 max-sm:text-xs"
+                    >
+                        Get digest
+                    </Link>
+                </li>
             </ul>
         </nav>
     </header>

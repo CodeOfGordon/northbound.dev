@@ -1,10 +1,11 @@
 /**
- * Digest email rendering + delivery. Plain template literals and a raw fetch
- * to Resend's HTTP API — no email framework, no SDK dependency (~15 lines of
- * HTTP replaces the package; ADR-021). HTML is a single ~600px table with
- * fully inline styles and explicit light colors: email clients strip
- * stylesheets, and Gmail's forced-dark mode inverts sanely from an explicit
- * white background.
+ * Digest email rendering. Plain template literals — no email framework, no SDK.
+ * HTML is a single ~600px table with fully inline styles and explicit light
+ * colors: email clients strip stylesheets, and Gmail's forced-dark mode inverts
+ * sanely from an explicit white background.
+ *
+ * Delivery itself happens in the GitHub Actions runner over Gmail SMTP
+ * (scripts/send-digest.mjs) — Vercel blocks outbound SMTP. (ADR-025/026)
  */
 import { formatDate, formatCityLabel } from '@/lib/format';
 
@@ -22,6 +23,8 @@ export interface DigestItem {
     labels?: string[];
     /** Application deadline (hackathon sections). */
     deadline?: string;
+    /** Travel-reimbursement note, when known. */
+    travel?: string;
 }
 
 export interface DigestSections {
@@ -30,16 +33,33 @@ export interface DigestSections {
     deadlines: DigestItem[];
 }
 
+export interface RenderedEmail {
+    subject: string;
+    html: string;
+    text: string;
+    /** RFC 8058 one-click unsubscribe + RFC 2369 headers. */
+    headers: Record<string, string>;
+}
+
 const MUTED = 'color:#6b7280;font-size:13px;';
 const LINK = 'color:#2563eb;text-decoration:none;font-weight:600;';
+
+function escapeHtml(s: string): string {
+    return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
 
 function itemRow(siteUrl: string, item: DigestItem, extra?: string): string {
     const where = formatCityLabel(item);
     const when = `${formatDate(item.date)}${item.endDate && item.endDate !== item.date ? ` – ${formatDate(item.endDate)}` : ''}`;
+    const notes = [
+        item.deadline ? `Apply by ${formatDate(item.deadline)}` : '',
+        item.travel ? escapeHtml(item.travel) : '',
+    ].filter(Boolean);
     return `
       <tr><td style="padding:10px 0;border-bottom:1px solid #e5e7eb;">
         <a href="${siteUrl}/events/${item.slug}" style="${LINK}font-size:15px;">${escapeHtml(item.title)}</a>
         <div style="${MUTED}padding-top:2px;">${when} · ${escapeHtml(where)}${extra ?? ''}</div>
+        ${notes.length ? `<div style="${MUTED}padding-top:2px;">${notes.join(' · ')}</div>` : ''}
         ${item.labels?.length ? `<div style="${MUTED}padding-top:2px;">matched: ${escapeHtml(item.labels.join(', '))}</div>` : ''}
       </td></tr>`;
 }
@@ -51,11 +71,12 @@ function section(title: string, rows: string): string {
       ${rows}`;
 }
 
-function escapeHtml(s: string): string {
-    return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-}
-
-export function renderDigest(sections: DigestSections, siteUrl: string, todayLabel: string): { subject: string; html: string; text: string } {
+export function renderDigest(
+    sections: DigestSections,
+    siteUrl: string,
+    todayLabel: string,
+    opts: { email: string; unsubscribeUrl: string; oneClickUrl: string; manageUrl: string },
+): RenderedEmail {
     const counts = [
         sections.newEvents.length ? `${sections.newEvents.length} new for you` : '',
         sections.appsOpen.length ? `${sections.appsOpen.length} application${sections.appsOpen.length === 1 ? '' : 's'} open` : '',
@@ -63,9 +84,7 @@ export function renderDigest(sections: DigestSections, siteUrl: string, todayLab
     ].filter(Boolean);
     const subject = `Northbound: ${counts.join(' · ')} — ${todayLabel}`;
 
-    const applyExtra = (item: DigestItem) =>
-        ` · <a href="${item.url}" style="${LINK}">Apply →</a>` +
-        (item.deadline ? ` <span style="${MUTED}">by ${formatDate(item.deadline)}</span>` : '');
+    const applyExtra = (item: DigestItem) => ` · <a href="${item.url}" style="${LINK}">Apply →</a>`;
 
     const html = `
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" bgcolor="#f3f4f6" style="background:#f3f4f6;padding:24px 0;">
@@ -76,43 +95,42 @@ export function renderDigest(sections: DigestSections, siteUrl: string, todayLab
       ${section('Applications now open', sections.appsOpen.map((i) => itemRow(siteUrl, i, applyExtra(i))).join(''))}
       ${section('Deadlines approaching', sections.deadlines.map((i) => itemRow(siteUrl, i, applyExtra(i))).join(''))}
       ${section('New events for you', sections.newEvents.map((i) => itemRow(siteUrl, i)).join(''))}
-      <tr><td style="${MUTED}padding-top:22px;">Sent by your Northbound digest · <a href="${siteUrl}/events?category=hackathon" style="${LINK}">browse hackathons</a> · edit config/interests.ts to tune this</td></tr>
+      <tr><td style="padding-top:24px;border-top:1px solid #e5e7eb;">
+        <div style="${MUTED}">
+          You're receiving this because ${escapeHtml(opts.email)} subscribed to the Northbound event digest.<br>
+          <a href="${opts.manageUrl}" style="${LINK}">Change what you get</a> ·
+          <a href="${opts.unsubscribeUrl}" style="${LINK}">Unsubscribe</a> ·
+          <a href="${siteUrl}" style="${LINK}">northbound</a>
+        </div>
+      </td></tr>
     </table>
   </td></tr>
 </table>`;
 
-    const textLine = (i: DigestItem) => `- ${i.title} — ${i.date}${i.city ? ` — ${i.city}` : ''} — ${siteUrl}/events/${i.slug}`;
+    const textLine = (i: DigestItem) =>
+        `- ${i.title} — ${i.date}${i.city ? ` — ${i.city}` : ''}${i.deadline ? ` — apply by ${i.deadline}` : ''}\n  ${siteUrl}/events/${i.slug}`;
     const text = [
         `Northbound digest — ${todayLabel}`,
         sections.appsOpen.length ? `\nApplications now open:\n${sections.appsOpen.map(textLine).join('\n')}` : '',
         sections.deadlines.length ? `\nDeadlines approaching:\n${sections.deadlines.map(textLine).join('\n')}` : '',
         sections.newEvents.length ? `\nNew events for you:\n${sections.newEvents.map(textLine).join('\n')}` : '',
-    ].filter(Boolean).join('\n');
+        `\n—\nYou're receiving this because ${opts.email} subscribed to the Northbound event digest.`,
+        `Change what you get: ${opts.manageUrl}`,
+        `Unsubscribe: ${opts.unsubscribeUrl}`,
+    ]
+        .filter(Boolean)
+        .join('\n');
 
-    return { subject, html, text };
-}
-
-/** Send via Resend's HTTP API. Returns null on success, an error string on failure — never throws. */
-export async function sendEmail(args: { apiKey: string; to: string[]; subject: string; html: string; text: string }): Promise<string | null> {
-    try {
-        const res = await fetch('https://api.resend.com/emails', {
-            method: 'POST',
-            headers: { Authorization: `Bearer ${args.apiKey}`, 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                // Default sender works without a verified domain but only delivers to
-                // the Resend account owner. Verify a domain (Resend → Domains, free)
-                // and set DIGEST_FROM to an address on it to reach other recipients.
-                from: process.env.DIGEST_FROM ?? 'Northbound <onboarding@resend.dev>',
-                to: args.to,
-                subject: args.subject,
-                html: args.html,
-                text: args.text,
-            }),
-            signal: AbortSignal.timeout(15_000),
-        });
-        if (!res.ok) return `resend ${res.status}: ${(await res.text()).slice(0, 300)}`;
-        return null;
-    } catch (e) {
-        return `resend request failed: ${(e as Error).message}`;
-    }
+    return {
+        subject,
+        html,
+        text,
+        headers: {
+            // RFC 2369 + RFC 8058: mailbox providers render a native unsubscribe
+            // control and POST here; the endpoint honors it immediately.
+            'List-Unsubscribe': `<${opts.oneClickUrl}>, <mailto:northbound.dev.events@gmail.com?subject=unsubscribe>`,
+            'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
+            'List-Id': `Northbound event digest <digest.northbound>`,
+        },
+    };
 }

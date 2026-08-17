@@ -37,11 +37,15 @@ const ONLY_HOST = (() => {
     const i = args.indexOf('--host');
     return i >= 0 ? String(args[i + 1] ?? '').toLowerCase() : null;
 })();
+const REFRESH_UNKNOWN = args.includes('--refresh-unknown');
 
 const UA = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36';
 const FETCH_TIMEOUT_MS = 10_000;
 const SLEEP_BETWEEN_MS = 1_500;
 const HORIZON_DAYS = 183;
+
+/** Conventional FAQ/travel paths probed when the linked pages say nothing about travel. */
+const TRAVEL_PROBE_PATHS = ['/faq', '/faqs', '/travel', '/about'];
 
 /** Aggregator hosts whose application signal is API-owned (or useless to scan). */
 const SKIP_HOSTS = new Set(['devpost.com', 'mlh.io', 'mlh.com', 'dorahacks.io', 'ethglobal.com', 'lu.ma']);
@@ -179,6 +183,9 @@ function classifyTravel(text) {
 function isStale(doc, today) {
     const e = doc.enrichment;
     if (!e?.checkedAt) return true;
+    // Backfill lever: re-check hosts whose travel policy we never resolved,
+    // ignoring the cadence (used after improving the classifiers/probes).
+    if (REFRESH_UNKNOWN && e.travel?.status === 'unknown') return true;
     const ageDays = (Date.now() - Date.parse(e.checkedAt)) / 86_400_000;
     if (Number.isNaN(ageDays)) return true;
     if (e.fetchStatus !== 'ok') return ageDays >= 7; // backoff — don't hammer failing hosts
@@ -260,6 +267,32 @@ async function main() {
             }
             application = classifyApplication(text, anchorDate);
             travel = classifyTravel(text);
+
+            // Many hackathon sites are SPA routers: the FAQ exists at a
+            // conventional path but is never a plain <a> in the raw HTML, so the
+            // link scan above misses it. When travel is still unknown (the
+            // expensive-to-miss signal), probe a couple of conventional paths.
+            if (travel.status === 'unknown') {
+                const tried = new Set([landingUrl.replace(/\/$/, ''), (faqUrl ?? '').replace(/\/$/, '')]);
+                for (const path of TRAVEL_PROBE_PATHS) {
+                    const probe = new URL(path, landingUrl).href;
+                    if (tried.has(probe.replace(/\/$/, ''))) continue;
+                    tried.add(probe.replace(/\/$/, ''));
+                    await sleep(SLEEP_BETWEEN_MS);
+                    let probeText;
+                    try {
+                        probeText = pageText(await fetchText(probe));
+                    } catch {
+                        continue; // 404s are the common case — keep probing
+                    }
+                    const probeTravel = classifyTravel(probeText);
+                    if (probeTravel.status !== 'unknown') {
+                        travel = probeTravel;
+                        if (application.status === 'unknown') application = classifyApplication(probeText, anchorDate);
+                        break;
+                    }
+                }
+            }
         } catch (e) {
             fetchStatus = e.status === 403 ? 'blocked' : 'fetch_failed';
         }

@@ -431,6 +431,49 @@ as a devDependency (runner-only, zero transitive deps).
 
 ---
 
+## ADR-026 — Subscribers replace the env recipient list; Resend removed (2026-08-17)
+
+**Why**: gordon wants other people (his own second address, friends) on the digest with
+*their own* filters — "Canada + US hackathons, but US only when travel reimbursement is
+known". A comma-separated env var can't express per-person interests, and Resend was
+already limited to the account owner without a paid domain, so it is removed entirely
+(no `RESEND_API_KEY`/`DIGEST_FROM`/`DIGEST_EMAIL` anywhere; Gmail SMTP from ADR-025 is
+the only sender).
+
+**Model**: new `subscribers` collection — `{email, token, status, topics[], regions[],
+usTravelOnly, minDaysOut, lastDigestAt, lastSentAt, notifiedOpenIds[]}`. Delivery state
+is **per subscriber**: A can be told about a hackathon B's filters exclude, and B still
+hears about it if their filters later change. This retires the global
+`Event.notifiedOpenAt` marker (field left in place, no longer read; the owner's history
+was seeded into his `notifiedOpenIds` so the pivot didn't re-blast him).
+`rulesForSubscriber()` (lib/notify/match.ts) expands checkbox prefs into matcher rules —
+one per topic × region — so each email row can name why it matched; the travel filter is
+scoped to the US rule only (`travel: 'yes'` requires a **confirmed** policy — unknown
+never counts, matching the enrichment doctrine that silence is not a "no").
+
+**Surfaces**: `/subscribe` (signup, and preference editing when opened with `?token=`),
+`/unsubscribe?token=` (confirm page), `POST /api/subscribe`, `POST /api/unsubscribe`
+(RFC 8058 one-click target; GET redirects to the page so no provider prefetch can
+unsubscribe anyone). Nav + footer link to it. Tokens are 24-byte random, only ever
+delivered inside emails, and never returned by the create path — so submitting someone
+else's address does not hand the submitter control of their preferences.
+
+**Compliance** (Gmail/Yahoo bulk-sender rules, RFC 2369/8058): every message carries
+`List-Unsubscribe` (https + mailto) and `List-Unsubscribe-Post: List-Unsubscribe=One-Click`,
+honored instantly (requirement is 48h); a visible unsubscribe + "change what you get"
+link and a plain-language "you're receiving this because {email} subscribed" line sit in
+both the HTML and text parts; sending is authenticated Gmail (SPF/DKIM/DMARC align
+automatically). Volume is a handful of messages/day — far under the 5k bulk threshold —
+but the same controls apply regardless.
+
+**Runner**: `scripts/send-digest.mjs` now sends N personalized messages and confirms only
+the ones that actually delivered; a per-recipient failure exits 1 (red job) while the
+others still advance. Enrichment gained `--refresh-unknown` plus conventional FAQ-path
+probes (`/faq`, `/faqs`, `/travel`, `/about`) because most university hackathon sites are
+SPAs whose FAQ is not a plain `<a>` in raw HTML — travel coverage was 3/42 before.
+
+---
+
 ## Known follow-ups / tech debt
 - ~~`database/mongodb.ts` stray `v8` import~~ — already removed.
 - ~~`normalizeDate()` UTC day-shift~~ — **fixed 2026-06-10**: `normalizeDate`/`normalizeTime` extract wall-clock parts in the event's IANA timezone (`Intl.DateTimeFormat`); `event.model.ts` reuses the same helpers.
