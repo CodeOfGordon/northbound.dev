@@ -21,6 +21,13 @@ import { addDaysISO, monthDay } from '@/lib/format';
 export interface DigestOptions {
     /** 'compose' (default): build + render, no send. 'confirm': record a send. */
     mode?: 'compose' | 'confirm';
+    /**
+     * Absolute base for links in the email. The route passes the live request
+     * origin — env/hardcoded fallbacks have been wrong before (the project
+     * deploys to northbound-dev.vercel.app), and a wrong base breaks every
+     * unsubscribe link, which is a compliance failure, not a cosmetic one.
+     */
+    siteUrl?: string;
     /** Bypass the per-subscriber same-day guard. */
     force?: boolean;
     /** Compose without advancing cursors (testing). */
@@ -53,7 +60,7 @@ export interface DigestResult {
     error?: string;
 }
 
-const SITE_URL = (process.env.NEXT_PUBLIC_SITE_URL ?? 'https://northbound.vercel.app').replace(/\/$/, '');
+const SITE_URL_FALLBACK = (process.env.NEXT_PUBLIC_SITE_URL ?? 'https://northbound-dev.vercel.app').replace(/\/$/, '');
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -88,6 +95,7 @@ export async function runDigest(opts: DigestOptions = {}): Promise<DigestResult>
 
     const runStarted = new Date();
     const today = todayInToronto();
+    const siteUrl = (opts.siteUrl ?? SITE_URL_FALLBACK).replace(/\/$/, '');
 
     const subs = await Subscriber.find({ status: 'active' }).lean<any[]>();
     if (!subs.length) return { ok: true, messages: [], subscribers: 0, skipped: 'no active subscribers' };
@@ -173,11 +181,11 @@ export async function runDigest(opts: DigestOptions = {}): Promise<DigestResult>
         }
 
         const sections: DigestSections = { newEvents, appsOpen, deadlines };
-        const rendered = renderDigest(sections, SITE_URL, monthDay(today), {
+        const rendered = renderDigest(sections, siteUrl, monthDay(today), {
             email: sub.email,
-            unsubscribeUrl: `${SITE_URL}/unsubscribe?token=${sub.token}`,
-            oneClickUrl: `${SITE_URL}/api/unsubscribe?token=${sub.token}`,
-            manageUrl: `${SITE_URL}/subscribe?token=${sub.token}`,
+            unsubscribeUrl: `${siteUrl}/unsubscribe?token=${sub.token}`,
+            oneClickUrl: `${siteUrl}/api/unsubscribe?token=${sub.token}`,
+            manageUrl: `${siteUrl}/subscribe?token=${sub.token}`,
         });
 
         messages.push({

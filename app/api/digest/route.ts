@@ -41,6 +41,8 @@ export async function POST(request: NextRequest) {
 
     await connectDB();
     const result = await runDigest({
+        // Live origin beats any configured base — see DigestOptions.siteUrl.
+        siteUrl: request.nextUrl.origin,
         mode: body?.mode === 'confirm' ? 'confirm' : 'compose',
         force: body?.force === true,
         dryRun: body?.dryRun === true,

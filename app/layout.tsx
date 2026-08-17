@@ -18,7 +18,8 @@ const martianMono = Martian_Mono({
   display: "swap",
 });
 
-const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://northbound.vercel.app";
+// Fallback must match the live deployment — northbound.vercel.app is NOT this project.
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://northbound-dev.vercel.app";
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
