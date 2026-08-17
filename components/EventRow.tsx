@@ -12,10 +12,15 @@ import type { EventDoc } from '@/lib/events';
 
 interface Props {
     event: EventDoc;
+    /**
+     * Lead with the event's dates in the left column (month-grouped feeds,
+     * where the rail only pins the month). Hackathon rows do this regardless.
+     */
+    showDate?: boolean;
 }
 
 /** Dense list row for the timeline feed (lu.ma style): time · thumb · title · meta · lane. */
-const EventRow = ({ event }: Props) => {
+const EventRow = ({ event, showDate = false }: Props) => {
     const { title, slug, image, organizer, city, date, endDate, time, mode, source, category, isFree, price } = event;
     const lane = laneOf(source, category);
     const accent = LANE_ACCENT[lane];
@@ -36,12 +41,20 @@ const EventRow = ({ event }: Props) => {
                 accent.hover,
             )}
         >
-            {lane === 'hackathon' ? (
-                // Hackathons are date-scoped (stored times are placeholder 9:00s) and the
-                // month-grouped horizon rail only gives the month — show the days here.
+            {lane === 'hackathon' || showDate ? (
+                // Date-first column: hackathons always (stored times are placeholder
+                // 9:00s), and any row inside a month-grouped feed (the rail only pins
+                // the month). Second line: end of a multi-day range, else the time for
+                // sources where it's real.
                 <span className="text-light-100 font-martian-mono flex w-16 shrink-0 flex-col text-center text-xs leading-tight max-sm:hidden">
                     <span>{monthDay(date)}</span>
-                    {endDate && endDate !== date && <span className="text-light-200">– {monthDay(endDate)}</span>}
+                    {endDate && endDate !== date ? (
+                        <span className="text-light-200">– {monthDay(endDate)}</span>
+                    ) : (
+                        lane !== 'hackathon' && (
+                            <span className="text-light-200">{mode === 'online' ? 'Online' : formatTime(time)}</span>
+                        )
+                    )}
                 </span>
             ) : (
                 <span className="text-light-100 font-martian-mono w-16 shrink-0 text-center text-xs max-sm:hidden">

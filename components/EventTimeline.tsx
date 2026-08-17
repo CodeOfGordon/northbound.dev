@@ -63,7 +63,8 @@ const EventTimeline = ({ events, today, tomorrow, granularity = 'day' }: Props) 
                     <ul className="flex flex-1 list-none flex-col gap-2.5">
                         {groupEvents.map((event) => (
                             <li key={event.slug}>
-                                <EventRow event={event} />
+                                {/* Month buckets only pin the month — every row must carry its own dates. */}
+                                <EventRow event={event} showDate={granularity === 'month'} />
                             </li>
                         ))}
                     </ul>
