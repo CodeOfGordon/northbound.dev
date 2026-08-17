@@ -31,3 +31,29 @@ const ScrapeMetaSchema = new Schema<IScrapeMeta>(
 const ScrapeMeta = models.ScrapeMeta || model<IScrapeMeta>('ScrapeMeta', ScrapeMetaSchema);
 
 export default ScrapeMeta;
+
+/**
+ * Singleton cursor for the email digest (lib/notify/digest.ts) — same
+ * collection, `key: 'digest'`. lastDigestAt = "considered through" (advances
+ * even on empty runs so the window stays bounded); lastSentAt = last actual
+ * email (drives the same-day rerun guard). At-least-once: both only advance
+ * after Resend confirms the send. (ADR-021)
+ */
+export interface IDigestMeta extends Document {
+    key: string;
+    lastDigestAt: Date;
+    lastSentAt?: Date;
+    lastResult?: string;
+}
+
+const DigestMetaSchema = new Schema<IDigestMeta>(
+    {
+        key: { type: String, required: true, unique: true, default: 'digest' },
+        lastDigestAt: { type: Date },
+        lastSentAt: { type: Date },
+        lastResult: { type: String },
+    },
+    { timestamps: true, collection: 'meta' },
+);
+
+export const DigestMeta = models.DigestMeta || model<IDigestMeta>('DigestMeta', DigestMetaSchema);

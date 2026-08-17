@@ -128,3 +128,27 @@ jobs:
       - name: Enrich hackathon events
         if: steps.cfg.outputs.configured == 'true'
         run: node scripts/enrich-hackathons.mjs --budget "${{ github.event.inputs.enrich_budget || '25' }}"
+
+  # Daily interest digest email (app/api/digest → lib/notify). Runs LAST so it
+  # sees tonight's fresh events and application-status flips. if: always() —
+  # partial upstream failures shouldn't suppress the digest of what did land;
+  # the route's same-day guard makes reruns safe. (ADR-021/023)
+  digest:
+    runs-on: ubuntu-latest
+    needs: [scrape, enrich]
+    if: always()
+    env:
+      SITE_URL: ${{ secrets.SITE_URL }}
+      CRON_SECRET: ${{ secrets.CRON_SECRET }}
+    steps:
+      - name: Trigger digest
+        run: |
+          if [ -z "$SITE_URL" ] || [ -z "$CRON_SECRET" ]; then
+            echo "::warning::SITE_URL and/or CRON_SECRET are not set — skipping digest."
+            exit 0
+          fi
+          curl --fail-with-body -sS -X POST "$SITE_URL/api/digest" \
+            -H "Authorization: Bearer $CRON_SECRET" \
+            -H "Content-Type: application/json" \
+            -d '{}' \
+            --max-time 90
