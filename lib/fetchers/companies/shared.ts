@@ -38,6 +38,10 @@ export interface CompanyStdEvent {
     category?: 'hackathon' | 'meetup' | 'conference' | 'networking';
     /** Source-provided audience/region tokens (e.g. ['North America','EMEA']) — geo gate uses these when the city is ambiguous/online. */
     _regions?: string[];
+    /** Hackathon application state, when the platform exposes it (Devpost open_state). */
+    applicationStatus?: 'open' | 'closed' | 'not_yet' | 'unknown';
+    /** YYYY-MM-DD submission/application deadline, when known. */
+    applicationDeadline?: string;
 }
 
 /**

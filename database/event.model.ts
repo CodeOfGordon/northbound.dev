@@ -2,6 +2,28 @@ import { Schema, model, models, Document } from 'mongoose';
 import { normalizeDate, normalizeTime } from './normalize';
 
 
+/**
+ * Enrichment-script-owned subdocument (scripts/enrich-hackathons.mjs) — the
+ * scrape pipeline must NEVER write this path: it is excluded from CanonicalEvent,
+ * so the nightly whole-doc $set can't wipe it. See ADR-018.
+ */
+export interface EventEnrichment {
+    host: string;                                     // hostname the signals were fetched under
+    checkedAt: string;                                // ISO datetime of the last check
+    source: 'site' | 'curated';                       // curated overrides win over site heuristics
+    fetchStatus: 'ok' | 'fetch_failed' | 'blocked';
+    application: {
+        status: 'open' | 'closed' | 'not_yet' | 'unknown';
+        deadline?: string;                            // YYYY-MM-DD
+        evidence?: string;                            // snippet the classifier matched on
+    };
+    travel: {
+        status: 'yes' | 'no' | 'unknown';
+        amount?: string;                              // e.g. "up to $500"
+        evidence?: string;
+    };
+}
+
 export interface IEvent extends Document {
     title: string;
     slug: string;
@@ -22,16 +44,43 @@ export interface IEvent extends Document {
     organizer: string;
     tags: string[];
     url: string;                  // canonical link to the source event page
-    source: 'luma' | 'eventbrite' | 'meetup' | 'mlh' | 'company' | 'hackathon';
+    source: 'luma' | 'eventbrite' | 'meetup' | 'mlh' | 'company' | 'hackathon' | 'watchlist';
     sourceId?: string;            // platform-native id, when available
     fingerprint?: string;         // dedup key — set by the scraper upsert path
     isFree?: boolean;
     price?: string;
     category?: 'hackathon' | 'meetup' | 'conference' | 'networking';
     region?: 'CA' | 'US' | 'ONLINE' | 'INTL' | 'UNKNOWN'; // North-America scope (derived in normalize)
+    /** Scrape-owned (Devpost open_state today) — 'not_yet' = announced but apps not open yet. */
+    applicationStatus?: 'open' | 'closed' | 'not_yet' | 'unknown';
+    applicationDeadline?: string; // YYYY-MM-DD — lexical compare like every date field
+    /** Digest-owned marker: set once the "applications open" alert for this event was sent. */
+    notifiedOpenAt?: Date;
+    /** Enrichment-script-owned — never present in CanonicalEvent (rescrape-wipe safety). */
+    enrichment?: EventEnrichment;
     createdAt: Date;
     updatedAt: Date;
 }
+
+const EnrichmentSchema = new Schema<EventEnrichment>(
+    {
+        host: { type: String, required: true, trim: true },
+        checkedAt: { type: String, required: true },
+        source: { type: String, enum: ['site', 'curated'], required: true },
+        fetchStatus: { type: String, enum: ['ok', 'fetch_failed', 'blocked'], required: true },
+        application: {
+            status: { type: String, enum: ['open', 'closed', 'not_yet', 'unknown'], required: true },
+            deadline: { type: String },
+            evidence: { type: String, maxlength: 280 },
+        },
+        travel: {
+            status: { type: String, enum: ['yes', 'no', 'unknown'], required: true },
+            amount: { type: String },
+            evidence: { type: String, maxlength: 280 },
+        },
+    },
+    { _id: false },
+);
 
 const EventSchema = new Schema<IEvent>(
     {
@@ -119,13 +168,17 @@ const EventSchema = new Schema<IEvent>(
     endTime:  { type: String },
     timezone: { type: String, default: 'America/Toronto' },
     url:      { type: String, required: [true, 'Source URL is required'], trim: true },
-    source:   { type: String, enum: ['luma', 'eventbrite', 'meetup', 'mlh', 'company', 'hackathon'], required: [true, 'Source is required'] },
+    source:   { type: String, enum: ['luma', 'eventbrite', 'meetup', 'mlh', 'company', 'hackathon', 'watchlist'], required: [true, 'Source is required'] },
     sourceId: { type: String, trim: true },
     fingerprint: { type: String },
     isFree:   { type: Boolean },
     price:    { type: String, trim: true },
     category: { type: String, enum: ['hackathon', 'meetup', 'conference', 'networking'] },
     region:   { type: String, enum: ['CA', 'US', 'ONLINE', 'INTL', 'UNKNOWN'] },
+    applicationStatus:   { type: String, enum: ['open', 'closed', 'not_yet', 'unknown'] },
+    applicationDeadline: { type: String },
+    notifiedOpenAt:      { type: Date },
+    enrichment:          { type: EnrichmentSchema },
     },
     {
         timestamps: true, // Auto-generate createdAt and updatedAt

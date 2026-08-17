@@ -37,12 +37,18 @@ export const MEETUP_SEARCH_URLS = MEETUP_LOCATIONS.flatMap((location) =>
     ),
 );
 
-/** MLH season pages — a missing season (404) is skipped silently. */
+/** MLH season pages — a missing season (404) is skipped silently.
+ *  mlh.io now 302s to www.mlh.com (observed 2026-08) — link the canonical host directly. */
 export const MLH_SEASON_URLS = [
-    'https://mlh.io/seasons/2026/events',
-    'https://mlh.io/seasons/2027/events',
+    'https://www.mlh.com/seasons/2026/events',
+    'https://www.mlh.com/seasons/2027/events',
 ];
-/** Keep MLH hackathons in these provinces (plus all digital ones). */
+/**
+ * Canadian in-person MLH events are narrowed to these provinces (home regions).
+ * US in-person events are deliberately NOT narrowed — the travel-reimbursement
+ * feature is about flying to the majors (HackGT, HackUTD, LA Hacks, …), so the
+ * whole US slate is kept. Digital events always pass. (ADR-019)
+ */
 export const MLH_PROVINCES = new Set(['ON', 'Ontario', 'QC', 'Quebec', 'Québec']);
 
 /**

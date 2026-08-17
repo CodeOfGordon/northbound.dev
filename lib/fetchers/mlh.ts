@@ -48,8 +48,10 @@ export async function fetchMlh(): Promise<unknown[]> {
         if (seen.has(ev.id)) return false;
         seen.add(ev.id);
         if (ev.status === 'ended' || new Date(ev.endsAt ?? ev.startsAt).getTime() < now) return false;
-        // Our regions (Ontario/Quebec) in person, or any digital hackathon
+        // Any digital hackathon; in person: all of the US (travel-reimbursement
+        // coverage — see ADR-019), Canada narrowed to Ontario/Quebec (home regions).
         if (ev.formatType === 'digital') return true;
+        if (ev.venueAddress?.country === 'US') return true;
         return ev.venueAddress?.country === 'CA' && MLH_PROVINCES.has(ev.venueAddress?.state ?? '');
     });
 }

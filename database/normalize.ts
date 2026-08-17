@@ -4,7 +4,7 @@ import { deriveTags } from '@/lib/fetchers/relevance';
 import { stripHtml } from '@/lib/fetchers/util';
 import { classifyRegion, cleanTitle } from '@/lib/fetchers/geo';
 
-type Source = 'luma' | 'eventbrite' | 'meetup' | 'mlh' | 'company' | 'hackathon';
+type Source = 'luma' | 'eventbrite' | 'meetup' | 'mlh' | 'company' | 'hackathon' | 'watchlist';
 
 const DEFAULT_TZ = 'America/Toronto';
 const DEFAULT_COUNTRY = 'Canada';
@@ -91,10 +91,16 @@ function fallbackDescription(title: string, city: string, organizer: string): st
     return `${title} — hosted by ${organizer} in ${city}. See the event page for full details.`;
 }
 
-/** Canonical payload — everything except slug + fingerprint (added at upsert time). */
+/**
+ * Canonical payload — everything except slug + fingerprint (added at upsert time)
+ * and the fields other writers own. The scrape upsert does `$set: doc` with this
+ * shape, so ONLY paths present here are ever overwritten on rescrape: excluding
+ * `enrichment` (enrichment script) and `notifiedOpenAt` (digest) is what makes
+ * their writes survive the nightly scrape. Do not add them back. (ADR-018)
+ */
 export type CanonicalEvent = Omit<
     IEvent,
-    keyof Document | 'slug' | 'fingerprint' | 'createdAt' | 'updatedAt'
+    keyof Document | 'slug' | 'fingerprint' | 'createdAt' | 'updatedAt' | 'enrichment' | 'notifiedOpenAt'
 >;
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -198,6 +204,11 @@ function mapStdCompanyEvent(raw: any, source: Source = 'company'): CanonicalEven
         isFree: raw.isFree,
         price: raw.price,
         category: raw.category ?? mapCategory(title),
+        // Only providers that actually know application state (Devpost today) emit
+        // these — spreading conditionally keeps the keys out of other sources' $set.
+        ...(raw.applicationStatus
+            ? { applicationStatus: raw.applicationStatus, applicationDeadline: raw.applicationDeadline }
+            : {}),
     };
 }
 
@@ -358,6 +369,14 @@ function mapRaw(raw: any, source: Source): CanonicalEvent {
                 raw._provider === 'luma'
                     ? mapLumaEvent(raw, source, raw._company)
                     : mapStdCompanyEvent(raw, source);
+            doc.category = 'hackathon';
+            return doc;
+        }
+
+        case 'watchlist': {
+            // Curated named hackathons (lib/data/watchlist.ts) — the fetcher emits
+            // the std shape with dates parsed from each event's own site.
+            const doc = mapStdCompanyEvent(raw, source);
             doc.category = 'hackathon';
             return doc;
         }

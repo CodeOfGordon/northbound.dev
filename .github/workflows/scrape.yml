@@ -23,7 +23,7 @@ on:
       sources:
         description: 'Space-separated sources (free only on the hosted site)'
         required: false
-        default: 'luma mlh hackathon company'
+        default: 'luma mlh hackathon watchlist company'
 
 jobs:
   scrape:
@@ -62,7 +62,7 @@ jobs:
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             echo "sources=${{ github.event.inputs.sources }}" >> "$GITHUB_OUTPUT"
           else
-            echo "sources=luma mlh hackathon company" >> "$GITHUB_OUTPUT"
+            echo "sources=luma mlh hackathon watchlist company" >> "$GITHUB_OUTPUT"
           fi
 
       # One POST per source so a single slow source can't starve the rest; each free

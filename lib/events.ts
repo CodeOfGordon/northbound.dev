@@ -7,7 +7,9 @@
 import 'server-only';
 import type { QueryFilter } from 'mongoose';
 import connectDB from '@/database/mongodb';
-import { Event, type IEvent } from '@/database';
+import { Event, type EventEnrichment, type IEvent } from '@/database';
+
+export type { EventEnrichment };
 
 export interface EventDoc {
     title: string;
@@ -28,11 +30,14 @@ export interface EventDoc {
     organizer: string;
     tags: string[];
     url: string;
-    source: 'luma' | 'eventbrite' | 'meetup' | 'mlh' | 'company' | 'hackathon';
+    source: 'luma' | 'eventbrite' | 'meetup' | 'mlh' | 'company' | 'hackathon' | 'watchlist';
     isFree?: boolean;
     price?: string;
     category?: 'hackathon' | 'meetup' | 'conference' | 'networking';
     region?: 'CA' | 'US' | 'ONLINE' | 'INTL' | 'UNKNOWN';
+    applicationStatus?: 'open' | 'closed' | 'not_yet' | 'unknown';
+    applicationDeadline?: string;
+    enrichment?: EventEnrichment;
 }
 
 export interface EventQuery {
@@ -63,7 +68,7 @@ export interface EventQuery {
 
 const MODES = ['online', 'offline', 'hybrid'];
 const CATEGORIES = ['hackathon', 'meetup', 'conference', 'networking'];
-const SOURCES = ['luma', 'eventbrite', 'meetup', 'mlh', 'company', 'hackathon'];
+const SOURCES = ['luma', 'eventbrite', 'meetup', 'mlh', 'company', 'hackathon', 'watchlist'];
 /** Community platforms collapsed into the "Local" lane (source=local). */
 const LOCAL_SOURCES = ['luma', 'eventbrite', 'meetup'];
 
@@ -105,6 +110,8 @@ function toDoc(d: any): EventDoc {
         agenda: d.agenda, organizer: d.organizer,
         tags: d.tags ?? [], url: d.url ?? '', source: d.source ?? 'company',
         isFree: d.isFree, price: d.price, category: d.category, region: d.region,
+        applicationStatus: d.applicationStatus, applicationDeadline: d.applicationDeadline,
+        enrichment: d.enrichment,
     };
 }
 

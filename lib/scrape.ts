@@ -5,10 +5,11 @@ import { fetchMeetup } from './fetchers/meetup';
 import { fetchMlh } from './fetchers/mlh';
 import { fetchCompany } from './fetchers/company';
 import { fetchHackathons } from './fetchers/hackathons';
+import { fetchWatchlist } from './fetchers/watchlist';
 import { isConsumerEvent, isRelevant } from './fetchers/relevance';
 import { DEV_ONLY_COMPANIES } from './fetchers/config';
 
-export type ScrapeSource = 'luma' | 'eventbrite' | 'meetup' | 'mlh' | 'company' | 'hackathon';
+export type ScrapeSource = 'luma' | 'eventbrite' | 'meetup' | 'mlh' | 'company' | 'hackathon' | 'watchlist';
 
 type RawFetcher = () => Promise<unknown[]>;
 
@@ -22,6 +23,7 @@ const FETCHERS: Partial<Record<ScrapeSource, RawFetcher>> = {
     mlh: fetchMlh,
     company: fetchCompany,
     hackathon: fetchHackathons,
+    watchlist: fetchWatchlist,
 };
 
 export interface ScrapeResult {

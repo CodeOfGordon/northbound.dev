@@ -8,7 +8,7 @@ export const dynamic = 'force-dynamic'; // feed must never be stale
 
 const MODES = ['online', 'offline', 'hybrid'];
 const CATEGORIES = ['hackathon', 'meetup', 'conference', 'networking'];
-const SOURCES = ['luma', 'eventbrite', 'meetup', 'mlh', 'company', 'hackathon'];
+const SOURCES = ['luma', 'eventbrite', 'meetup', 'mlh', 'company', 'hackathon', 'watchlist'];
 
 /** Internal fields that must not leave the API (dedup key, platform ids, Mongo id). */
 const EXCLUDE = { _id: 0, fingerprint: 0, sourceId: 0, __v: 0 } as const;

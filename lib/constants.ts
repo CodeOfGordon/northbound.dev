@@ -15,6 +15,7 @@ export const SOURCE_LABELS: Record<string, string> = {
     mlh: 'MLH',
     company: 'Company',
     hackathon: 'the hackathon site',
+    watchlist: 'the hackathon site',
 };
 
 /**
@@ -32,7 +33,7 @@ export const LANE_LABELS: Record<Lane, string> = {
 
 export function laneOf(source: string, category?: string): Lane {
     if (source === 'company') return 'company';
-    if (source === 'mlh' || source === 'hackathon' || category === 'hackathon') return 'hackathon';
+    if (source === 'mlh' || source === 'hackathon' || source === 'watchlist' || category === 'hackathon') return 'hackathon';
     return 'local';
 }
 
@@ -42,7 +43,7 @@ export type FeedLane = Lane | 'all';
 /** Lane from URL params — `source` may be the 'local' pseudo-source; absence of both → 'all'. */
 export function laneFromParams(source?: string | null, category?: string | null): FeedLane {
     if (source === 'company') return 'company';
-    if (category === 'hackathon' || source === 'mlh' || source === 'hackathon') return 'hackathon';
+    if (category === 'hackathon' || source === 'mlh' || source === 'hackathon' || source === 'watchlist') return 'hackathon';
     if (source === 'local') return 'local';
     return 'all';
 }

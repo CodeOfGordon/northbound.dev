@@ -4,7 +4,7 @@ export { default as Booking } from './booking.model';
 export { default as ScrapeMeta } from './meta.model';
 
 // TypeScript interfaces exports
-export type { IEvent } from './event.model';
+export type { IEvent, EventEnrichment } from './event.model';
 export type { IBooking } from './booking.model';
 export type { IScrapeMeta } from './meta.model';
 
