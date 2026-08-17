@@ -298,7 +298,9 @@ async function main() {
         }
 
         // Curated override wins for travel (org-level policy, stable across editions).
-        const override = OVERRIDES[host];
+        // Editions live on per-year subdomains (2026.knighthacks.org, ai.lahacks.com),
+        // so fall back to the registrable domain.
+        const override = OVERRIDES[host] ?? OVERRIDES[host.split('.').slice(-2).join('.')];
         let source = 'site';
         if (override?.travel) {
             travel = { ...override.travel };

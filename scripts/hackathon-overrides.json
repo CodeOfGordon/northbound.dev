@@ -43,5 +43,36 @@
       "status": "no",
       "evidence": "Curated: McHacks FAQ — \"we are not able to provide travel reimbursements, however we will have sleeping areas available at the venue itself.\""
     }
+  },
+  "hack.gt": {
+    "travel": {
+      "status": "yes",
+      "evidence": "Curated: HackGT (HexLabs) admits through two pools — a travel-reimbursement pool and a non-reimbursement pool; amounts vary by year."
+    }
+  },
+  "mhacks.org": {
+    "travel": {
+      "status": "yes",
+      "amount": "up to $300",
+      "evidence": "Curated: MHacks has offered travel reimbursement up to $300 USD for accepted hackers."
+    }
+  },
+  "hackatbrown.org": {
+    "travel": {
+      "status": "yes",
+      "evidence": "Curated: Hack@Brown offers travel reimbursement to accepted hackers (standby admits excluded)."
+    }
+  },
+  "shellhacks.net": {
+    "travel": {
+      "status": "no",
+      "evidence": "Curated: ShellHacks does not offer financial travel reimbursement; it charters coach buses to select Florida schools instead."
+    }
+  },
+  "knighthacks.org": {
+    "travel": {
+      "status": "no",
+      "evidence": "Curated: Knight Hacks does not provide travel reimbursement beyond chartered buses (FIU/UF/USF) due to budget constraints."
+    }
   }
 }
