@@ -179,6 +179,11 @@ const TRAVEL_NO_RES = [
     /travel[^.]{0,60}?(?:is|are|will\s+be)\s+not\s+(?:covered|reimbursed|provided|offered)/i,
     /travel[^.]{0,60}?(?:is|are)\s+the\s+responsibility/i,
     /no\s+travel\s+(?:reimbursements?|stipends?|grants?|funding|assistance)/i,
+    // Contractions: "we aren't able to offer travel reimbursement",
+    // "won't be able to reimburse travel" — the alternation above only matches
+    // separated words, and hackUMBC's real "no" was slipping through as unknown.
+    /n'?t\s+(?:be\s+)?(?:able\s+to\s+)?[^.]{0,20}?(?:reimburs|cover|provid|offer)\w*[^.]{0,50}?travel/i,
+    /(?:unfortunately|sadly|regret)[^.]{0,60}?(?:no|not|n'?t)[^.]{0,40}?travel[^.]{0,30}?(?:reimburs|stipend|cover)/i,
 ];
 const TRAVEL_YES_RES = [
     /travel\s+(?:reimbursements?|grants?|stipends?|scholarships?|assistance|funding)[^.]{0,60}?(?:is|are|will\s+be)?\s*(?:available|offered|provided)/i,
