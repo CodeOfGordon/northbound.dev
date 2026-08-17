@@ -127,7 +127,10 @@ function mapLumaEvent(raw: any, source: Source, organizerOverride?: string): Can
     const venueIsUrl = typeof rawVenue === 'string' && /^https?:\/\//i.test(rawVenue.trim());
     const online = raw.location_type !== 'offline' || venueIsUrl;
     const city = canonicalCity(geo.city ?? (online ? 'Online' : DEFAULT_CITY));
-    const venue = online ? 'Online' : (rawVenue ?? 'TBA');
+    // Unknown venue/country store '' (not 'TBA') — display formatting is the
+    // renderer's job (lib/format.ts guards every degenerate case). City keeps its
+    // legacy fallback: it feeds the frozen fingerprint recipe and must not change.
+    const venue = online ? 'Online' : (rawVenue ?? '');
     const organizer = organizerOverride ?? raw.calendar?.name ?? raw.hosts?.[0]?.name ?? 'Luma';
     const title = String(raw.name).slice(0, 100);
     const text = `${title} ${organizer}`;
@@ -178,8 +181,8 @@ function mapStdCompanyEvent(raw: any, source: Source = 'company'): CanonicalEven
         title,
         description: (description || fallbackDescription(title, city, organizer)).slice(0, 1000),
         image: raw.image ?? '',
-        venue: raw.venue ?? (online ? 'Online' : 'TBA'),
-        country: raw.country ?? (online ? 'Online' : 'TBA'),
+        venue: raw.venue ?? (online ? 'Online' : ''),
+        country: raw.country ?? (online ? 'Online' : ''),
         city,
         date: raw.date ?? normalizeDate(raw.startISO, tz),
         time: raw.time ?? (raw.startISO ? normalizeTime(raw.startISO, tz) : '09:00'),
@@ -239,7 +242,7 @@ function mapRaw(raw: any, source: Source): CanonicalEvent {
                 title,
                 description: (description || fallbackDescription(title, city, organizer)).slice(0, 1000),
                 image: raw.images?.medium ?? raw.imageUrl ?? '',
-                venue: raw.venue?.fullAddress ?? raw.venue?.name ?? (online ? 'Online' : 'TBA'),
+                venue: raw.venue?.fullAddress ?? raw.venue?.name ?? (online ? 'Online' : ''),
                 country: countryName(raw.venue?.country),
                 city,
                 date: raw.startDate,
@@ -270,7 +273,7 @@ function mapRaw(raw: any, source: Source): CanonicalEvent {
                 title,
                 description: (stripHtml(raw.description ?? '') || fallbackDescription(title, city, organizer)).slice(0, 1000),
                 image: raw.featuredEventPhoto?.highResUrl ?? raw.displayPhoto?.highResUrl ?? '',
-                venue: raw.venue?.address ?? raw.venue?.name ?? (online ? 'Online' : 'TBA'),
+                venue: raw.venue?.address ?? raw.venue?.name ?? (online ? 'Online' : ''),
                 country: countryName(raw.venue?.country),
                 city,
                 date: normalizeDate(raw.dateTime, tz),
@@ -295,7 +298,7 @@ function mapRaw(raw: any, source: Source): CanonicalEvent {
                 title,
                 description: `${title} — an MLH ${raw.dateRange ?? ''} hackathon (${raw.location ?? 'see site'}). Details and registration on the event website.`.slice(0, 1000),
                 image: raw.backgroundUrl ?? raw.logoUrl ?? '',
-                venue: raw.location ?? (digital ? 'Online' : 'TBA'),
+                venue: raw.location ?? (digital ? 'Online' : ''),
                 country: digital ? 'Online' : countryName(raw.venueAddress?.country),
                 city: digital ? 'Online' : canonicalCity(raw.venueAddress?.city ?? DEFAULT_CITY),
                 date: normalizeDate(raw.startsAt, DEFAULT_TZ),
@@ -328,7 +331,7 @@ function mapRaw(raw: any, source: Source): CanonicalEvent {
                 title,
                 description: (stripHtml(raw.description ?? '') || fallbackDescription(title, city, organizer)).slice(0, 1000),
                 image: raw.image?.url ?? '',
-                venue: raw.venue?.venue ?? (online ? 'Online' : 'TBA'),
+                venue: raw.venue?.venue ?? (online ? 'Online' : ''),
                 country: DEFAULT_COUNTRY,
                 city,
                 date: raw.start_date.slice(0, 10),

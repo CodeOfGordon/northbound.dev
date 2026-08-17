@@ -13,7 +13,7 @@ const Footer = async () => {
                         <span className="text-foreground font-semibold">Northbound</span> — official dev events,
                         hackathons &amp; meetups across North America.
                     </p>
-                    <p className="text-light-200/80 text-xs">
+                    <p className="text-light-200 text-xs">
                         Aggregated from Luma, Eventbrite, Meetup, MLH &amp; company sites ·{' '}
                         <Link href="/events" className="hover:text-primary underline underline-offset-4">
                             Browse all

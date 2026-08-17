@@ -5,9 +5,9 @@ import Lenis from 'lenis';
 
 /**
  * Custom smooth (eased/momentum) scrolling via Lenis. Lenis v1 eases the *native*
- * window scroll with a rAF loop, so position:sticky/fixed and the scroll-driven
- * reveal animations keep working — and it stays at 60fps (no transform hijack that
- * would jank). Disabled for reduced-motion users; touch stays native (no lag).
+ * window scroll with a rAF loop, so position:sticky/fixed keeps working — and it
+ * stays at 60fps (no transform hijack that would jank). Disabled for
+ * reduced-motion users; touch stays native (no lag).
  */
 export default function SmoothScroll() {
     useEffect(() => {

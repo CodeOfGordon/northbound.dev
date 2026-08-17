@@ -8,7 +8,10 @@ export const dynamic = 'force-dynamic'; // feed must never be stale
 
 const MODES = ['online', 'offline', 'hybrid'];
 const CATEGORIES = ['hackathon', 'meetup', 'conference', 'networking'];
-const SOURCES = ['luma', 'eventbrite', 'meetup', 'mlh', 'company'];
+const SOURCES = ['luma', 'eventbrite', 'meetup', 'mlh', 'company', 'hackathon'];
+
+/** Internal fields that must not leave the API (dedup key, platform ids, Mongo id). */
+const EXCLUDE = { _id: 0, fingerprint: 0, sourceId: 0, __v: 0 } as const;
 
 function escapeRegex(s: string) {
     return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -80,7 +83,8 @@ export async function GET(request: NextRequest) {
         : { date: 1, _id: 1 };              // chronological, deterministic
 
     const [items, total] = await Promise.all([
-        Event.find(filter, q ? { score: { $meta: 'textScore' } } : {})
+        // $meta is additive, so it composes with the exclusion projection.
+        Event.find(filter, q ? { ...EXCLUDE, score: { $meta: 'textScore' } } : EXCLUDE)
             .sort(sort)
             .skip(skip)
             .limit(limit)

@@ -19,7 +19,7 @@ export type Region = 'CA' | 'US' | 'ONLINE' | 'INTL' | 'UNKNOWN';
 
 /** Result of classifying a raw location into a region + display country. */
 export interface GeoResult {
-    /** Human-readable country (or 'Online' / 'North America' / 'International' / 'TBA'). */
+    /** Human-readable country (or 'Online' / 'North America' / 'International' / '' when unknown). */
     country: string;
     /** Coarse region bucket. */
     region: Region;
@@ -305,11 +305,11 @@ export function classifyRegion(input: ClassifyInput): GeoResult {
                 ? { country: 'North America', region: 'UNKNOWN', isNorthAmerica: true }
                 : result('International', 'INTL');
         }
-        return { country: country || 'TBA', region: 'UNKNOWN', isNorthAmerica: true };
+        return { country: country || '', region: 'UNKNOWN', isNorthAmerica: true };
     }
 
     // Unreachable, but keeps the compiler happy about exhaustiveness.
-    return { country: country || 'TBA', region: 'UNKNOWN', isNorthAmerica: true };
+    return { country: country || '', region: 'UNKNOWN', isNorthAmerica: true };
 }
 
 /** Common HTML entities seen in scraped titles, mapped to their characters. */

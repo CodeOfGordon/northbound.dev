@@ -22,7 +22,7 @@ const RegisterButton = ({ event }: Props) => {
             onClick={() =>
                 posthog.capture('register_link_clicked', { slug: event.slug, title: event.title, source: event.source, url: event.url })
             }
-            className="bg-primary flex-center hover:bg-primary/90 w-full cursor-pointer gap-2 rounded-lg px-4 py-3 text-base font-semibold text-black transition"
+            className="bg-primary flex-center hover:bg-primary/90 text-primary-foreground w-full cursor-pointer gap-2 rounded-lg px-4 py-3 text-base font-semibold transition"
         >
             {label} <ExternalLink className="size-4" aria-hidden />
         </a>

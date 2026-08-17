@@ -7,6 +7,7 @@ import FilterBar from '@/components/FilterBar';
 import SearchBox from '@/components/SearchBox';
 import Pagination from '@/components/Pagination';
 import CompanyDirectory from '@/components/CompanyDirectory';
+import { type FeedLane, laneFromParams } from '@/lib/constants';
 import { distinctCities, queryEvents, todayInToronto, upcomingCompanies } from '@/lib/events';
 import { cn } from '@/lib/utils';
 
@@ -22,28 +23,19 @@ type SearchParams = Record<string, string | string[] | undefined>;
 
 const first = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v);
 
-type Lane = 'all' | 'company' | 'hackathon' | 'local';
-
-const LANE_TABS: { key: Lane; label: string; href: string }[] = [
+const LANE_TABS: { key: FeedLane; label: string; href: string }[] = [
     { key: 'all', label: 'All', href: '/events' },
     { key: 'company', label: 'Companies', href: '/events?source=company' },
     { key: 'hackathon', label: 'Hackathons', href: '/events?category=hackathon' },
     { key: 'local', label: 'Local', href: '/events?source=local' },
 ];
 
-const LANE_META: Record<Lane, { title: string; subtitle: string }> = {
+const LANE_META: Record<FeedLane, { title: string; subtitle: string }> = {
     all: { title: 'All events', subtitle: 'Everything we track across North America' },
     company: { title: 'Company events', subtitle: 'Official dev events from the companies we track' },
     hackathon: { title: 'Hackathons', subtitle: 'MLH, NVIDIA and community hackathons — in person or online' },
     local: { title: 'Local events', subtitle: 'Community meetups & events from Luma, Eventbrite and Meetup' },
 };
-
-function laneFrom(source?: string, category?: string): Lane {
-    if (source === 'company') return 'company';
-    if (category === 'hackathon' || source === 'mlh' || source === 'hackathon') return 'hackathon';
-    if (source === 'local') return 'local';
-    return 'all';
-}
 
 const EventsPage = async ({ searchParams }: { searchParams: Promise<SearchParams> }) => {
     const sp = await searchParams; // Next 16: searchParams is a Promise
@@ -53,7 +45,7 @@ const EventsPage = async ({ searchParams }: { searchParams: Promise<SearchParams
     const region = first(sp.region);
     const organizer = first(sp.organizer);
     const q = first(sp.q);
-    const lane = laneFrom(source, category);
+    const lane = laneFromParams(source, category);
 
     const [result, cities, companyRows] = await Promise.all([
         queryEvents({

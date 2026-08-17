@@ -30,7 +30,7 @@ const SearchBox = () => {
                 value={value}
                 onChange={(e) => setValue(e.target.value)}
                 placeholder="Search events, topics, organizers…"
-                className="bg-dark-100 border-border-dark placeholder:text-light-200/60 focus:border-primary/60 focus:ring-primary/20 w-full rounded-lg border py-2.5 pl-9 pr-4 text-sm transition-colors focus:outline-none focus:ring-2"
+                className="bg-dark-100 border-border-dark placeholder:text-light-200 focus:border-primary/60 focus:ring-primary/20 w-full rounded-lg border py-2.5 pl-9 pr-4 text-sm transition-colors focus:outline-none focus:ring-2"
                 aria-label="Search events"
             />
         </form>

@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import posthog from 'posthog-js';
 import { ChevronDown, SlidersHorizontal, X } from 'lucide-react';
-import { CATEGORY_LABELS, DATE_PRESETS, MODE_LABELS, REGION_LABELS } from '@/lib/constants';
+import { CATEGORY_LABELS, DATE_PRESETS, laneFromParams, MODE_LABELS, REGION_LABELS } from '@/lib/constants';
 import { cn } from '@/lib/utils';
 
 /** Add N days to a YYYY-MM-DD string via UTC date-part math (timezone-safe). */
@@ -21,6 +21,8 @@ function presetRange(preset: string): { from?: string; to?: string } {
     if (preset === 'today') return { from: today, to: today };
     if (preset === 'week') return { from: today, to: addDays(today, 7) };
     if (preset === 'month') return { from: today, to: addDays(today, 31) };
+    if (preset === 'quarter') return { from: today, to: addDays(today, 92) };
+    if (preset === 'half') return { from: today, to: addDays(today, 183) };
     return {};
 }
 
@@ -31,12 +33,18 @@ function currentPreset(sp: URLSearchParams): string {
     const days = Math.round((Date.parse(to) - Date.parse(from)) / 86_400_000);
     if (days === 0) return 'today';
     if (days <= 7) return 'week';
-    return 'month';
+    if (days <= 31) return 'month';
+    if (days <= 92) return 'quarter';
+    return 'half';
 }
 
-const PRESET_LABEL: Record<string, string> = { today: 'Today', week: 'This week', month: 'This month' };
-
-type Lane = 'all' | 'company' | 'hackathon' | 'local';
+const PRESET_LABEL: Record<string, string> = {
+    today: 'Today',
+    week: 'This week',
+    month: 'This month',
+    quarter: 'Next 3 months',
+    half: 'Next 6 months',
+};
 
 interface Props {
     cities: string[];
@@ -83,14 +91,7 @@ const FilterBar = ({ cities, companies }: Props) => {
         [router, pathname, sp],
     );
 
-    const lane: Lane =
-        sp.get('source') === 'company'
-            ? 'company'
-            : sp.get('category') === 'hackathon' || sp.get('source') === 'mlh' || sp.get('source') === 'hackathon'
-              ? 'hackathon'
-              : sp.get('source') === 'local'
-                ? 'local'
-                : 'all';
+    const lane = laneFromParams(sp.get('source'), sp.get('category'));
 
     const select = (
         name: string,

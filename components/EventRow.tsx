@@ -4,8 +4,8 @@ import Link from 'next/link';
 import posthog from 'posthog-js';
 import { Building2, MapPin } from 'lucide-react';
 import EventImage from '@/components/EventImage';
-import { COUNTRY_FLAG, LANE_LABELS, laneOf } from '@/lib/constants';
-import { formatDateRange, formatTime } from '@/lib/format';
+import { LANE_ACCENT, LANE_LABELS, laneOf } from '@/lib/constants';
+import { eventFlag, formatCityLabel, formatDateRange, formatPrice, formatTime } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import type { EventDoc } from '@/lib/events';
 
@@ -13,19 +13,14 @@ interface Props {
     event: EventDoc;
 }
 
-const LANE_ACCENT: Record<string, { dot: string; text: string; hover: string }> = {
-    company: { dot: 'bg-amber', text: 'text-amber', hover: 'hover:border-amber/40' },
-    hackathon: { dot: 'bg-primary', text: 'text-primary', hover: 'hover:border-primary/50' },
-    local: { dot: 'bg-light-200', text: 'text-light-200', hover: 'hover:border-light-200/40' },
-};
-
 /** Dense list row for the timeline feed (lu.ma style): time · thumb · title · meta · lane. */
 const EventRow = ({ event }: Props) => {
-    const { title, slug, image, organizer, city, country, date, endDate, time, mode, source, category, isFree } = event;
+    const { title, slug, image, organizer, city, date, endDate, time, mode, source, category, isFree, price } = event;
     const lane = laneOf(source, category);
-    const accent = LANE_ACCENT[lane] ?? LANE_ACCENT.local;
-    const flag = COUNTRY_FLAG[country] ?? '';
-    const place = mode === 'online' ? 'Online' : city;
+    const accent = LANE_ACCENT[lane];
+    const flag = eventFlag(event);
+    const priceInfo = formatPrice(isFree, price);
+    const place = formatCityLabel(event);
 
     return (
         <Link
@@ -67,7 +62,8 @@ const EventRow = ({ event }: Props) => {
                     <span className={cn('size-1.5 rounded-full', accent.dot)} />
                     <span className="max-sm:hidden">{LANE_LABELS[lane]}</span>
                 </span>
-                {isFree && <span className="text-primary text-xs font-semibold">Free</span>}
+                {priceInfo.kind === 'free' && <span className="text-primary text-xs font-semibold">Free</span>}
+                {priceInfo.kind === 'paid' && <span className="text-light-200 text-xs">{priceInfo.label}</span>}
             </div>
         </Link>
     );

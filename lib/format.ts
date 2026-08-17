@@ -79,3 +79,82 @@ export function defaultEndTime(time: string): string {
     if (h >= 23) return '23:59'; // don't roll past midnight — keep it same-day
     return `${String(h + 1).padStart(2, '0')}:${String(min).padStart(2, '0')}`;
 }
+
+/* ---- Location/price display guards ----------------------------------------
+ * Scraped sources fall back to placeholder strings ('TBA', 'North America', '')
+ * for unknown venue/country/city. These formatters are the single place that
+ * decides what a reader sees for each degenerate case — components must not
+ * render the raw fields.
+ */
+
+const PLACEHOLDER = /^(tba|tbd|hybrid event)$/i;
+/** Non-location country strings that carry no display value on their own. */
+const NON_COUNTRY = /^(online|north america|international)$/i;
+
+export function isPlaceholderLoc(v?: string | null): boolean {
+    return !v || !v.trim() || PLACEHOLDER.test(v.trim());
+}
+
+/** Venue for the detail aside — null means "unknown" (caller renders a muted fallback). */
+export function formatVenue(venue: string | undefined, mode: string): string | null {
+    if (mode === 'online') return 'Online';
+    if (isPlaceholderLoc(venue) || /^online$/i.test(venue!.trim())) return null;
+    return venue!.trim();
+}
+
+/** "City, Country" sub-line with unknown halves dropped — null when nothing real survives. */
+export function formatLocation({ city, country }: { city: string; country: string }): string | null {
+    const c = isPlaceholderLoc(city) ? '' : city.trim();
+    const k = isPlaceholderLoc(country) || NON_COUNTRY.test(country.trim()) ? '' : country.trim();
+    if (c && k) return `${c}, ${k}`;
+    return c || k || null;
+}
+
+/** Card/row pin label — always renders something; falls back region → generic. */
+export function formatCityLabel(e: { city: string; country: string; region?: string; mode: string }): string {
+    if (e.mode === 'online') return 'Online';
+    if (!isPlaceholderLoc(e.city)) return e.city.trim();
+    if (e.region === 'CA') return 'Canada';
+    if (e.region === 'US') return 'United States';
+    return formatLocation(e) ?? 'Location TBA';
+}
+
+/**
+ * Flag for cards/rows, keyed off the derived region (set on every doc) so
+ * presence is predictable; country-name fallback covers region-less docs.
+ * Unknown/INTL → no flag rather than a vague globe.
+ */
+export function eventFlag(e: { region?: string; country: string }): string {
+    if (e.region === 'CA') return '🇨🇦';
+    if (e.region === 'US') return '🇺🇸';
+    if (e.region === 'ONLINE') return '🌐';
+    const byCountry: Record<string, string> = { Canada: '🇨🇦', 'United States': '🇺🇸', Online: '🌐' };
+    return byCountry[e.country] ?? '';
+}
+
+/**
+ * Price for any surface. `kind` lets list views distinguish paid from
+ * data-missing (previously indistinguishable) without asserting a price we
+ * don't have: 'unknown' renders as nothing on cards, "Price not listed" on detail.
+ */
+export function formatPrice(isFree?: boolean, price?: string): { label: string; kind: 'free' | 'paid' | 'unknown' } {
+    const p = price?.trim() ?? '';
+    if (isFree === true || /^(free|\$?0(\.00?)?)$/i.test(p)) return { label: 'Free', kind: 'free' };
+    if (p) return { label: p, kind: 'paid' };
+    if (isFree === false) return { label: 'Paid', kind: 'paid' };
+    return { label: '', kind: 'unknown' };
+}
+
+/** Month-group header for the horizon timeline: { label: 'September', sub: '2026' }. */
+export function monthHeader(ym: string): { label: string; sub: string } {
+    const [y, m] = ym.split('-').map(Number);
+    const LONG = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+    return { label: LONG[m - 1] ?? ym, sub: String(y) };
+}
+
+/** True when `ts` is more than `days` old — kept here so render paths stay Date.now()-free. */
+export function olderThanDays(ts: Date | string | number, days: number): boolean {
+    const then = new Date(ts).getTime();
+    if (Number.isNaN(then)) return false;
+    return Date.now() - then > days * 86_400_000;
+}

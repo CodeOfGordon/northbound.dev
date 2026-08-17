@@ -4,8 +4,8 @@ import Link from 'next/link';
 import posthog from 'posthog-js';
 import { Building2, MapPin } from 'lucide-react';
 import EventImage from '@/components/EventImage';
-import { COUNTRY_FLAG, HIDDEN_TAGS, LANE_LABELS, laneOf } from '@/lib/constants';
-import { dateBadge, formatDateRange, formatTime } from '@/lib/format';
+import { HIDDEN_TAGS, LANE_ACCENT, LANE_LABELS, laneOf } from '@/lib/constants';
+import { dateBadge, eventFlag, formatCityLabel, formatDateRange, formatPrice, formatTime } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import type { EventDoc } from '@/lib/events';
 
@@ -13,23 +13,17 @@ interface Props {
     event: EventDoc;
 }
 
-/** Per-lane accent — kept subtle: a small dot + the hover border tint. */
-const LANE_ACCENT: Record<string, { dot: string; hover: string; text: string }> = {
-    company: { dot: 'bg-amber', hover: 'hover:border-amber/40', text: 'text-amber' },
-    hackathon: { dot: 'bg-primary', hover: 'hover:border-primary/50', text: 'text-primary' },
-    local: { dot: 'bg-light-200', hover: 'hover:border-light-200/40', text: 'text-light-200' },
-};
-
 /**
  * Image-forward feed card (home grids). A consistent dark scrim over the
  * scraped image keeps a wall of mismatched sources reading uniformly; the lane
  * accent is a small dot rather than a heavy colored border.
  */
 const EventCard = ({ event }: Props) => {
-    const { title, slug, image, organizer, city, country, date, endDate, time, mode, source, category, isFree } = event;
+    const { title, slug, image, organizer, city, date, endDate, time, source, category, isFree, price } = event;
     const lane = laneOf(source, category);
-    const accent = LANE_ACCENT[lane] ?? LANE_ACCENT.local;
-    const flag = COUNTRY_FLAG[country] ?? '';
+    const accent = LANE_ACCENT[lane];
+    const flag = eventFlag(event);
+    const priceInfo = formatPrice(isFree, price);
     const badge = dateBadge(date);
     const visibleTags = event.tags.filter((t) => !HIDDEN_TAGS.includes(t)).slice(0, 2);
 
@@ -48,7 +42,7 @@ const EventCard = ({ event }: Props) => {
 
                 <div className="bg-dark-100/85 border-border-dark absolute left-3 top-3 flex flex-col items-center rounded-lg border px-2.5 py-1 leading-none">
                     <span className="label text-primary text-[9px]">{badge.month}</span>
-                    <span className="font-martian-mono text-base font-semibold text-white">{badge.day}</span>
+                    <span className="font-martian-mono text-foreground text-base font-semibold">{badge.day}</span>
                 </div>
 
                 <span className={cn('label absolute right-3 top-3 flex items-center gap-1.5', accent.text)}>
@@ -67,7 +61,7 @@ const EventCard = ({ event }: Props) => {
                     <span className="flex items-center gap-1.5">
                         <MapPin className="size-3.5 shrink-0" aria-hidden />
                         {flag && <span aria-hidden>{flag}</span>}
-                        <span className="truncate">{mode === 'online' ? 'Online' : city}</span>
+                        <span className="truncate">{formatCityLabel(event)}</span>
                     </span>
                     <span className="flex items-center gap-1.5">
                         <Building2 className="size-3.5 shrink-0" aria-hidden />
@@ -75,12 +69,13 @@ const EventCard = ({ event }: Props) => {
                     </span>
                 </div>
 
-                {(visibleTags.length > 0 || isFree) && (
+                {(visibleTags.length > 0 || priceInfo.kind !== 'unknown') && (
                     <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
                         {visibleTags.map((tag) => (
                             <span key={tag} className="chip text-light-200 text-[11px]">{tag}</span>
                         ))}
-                        {isFree && <span className="text-primary ml-auto text-xs font-semibold">Free</span>}
+                        {priceInfo.kind === 'free' && <span className="text-primary ml-auto text-xs font-semibold">Free</span>}
+                        {priceInfo.kind === 'paid' && <span className="text-light-200 ml-auto text-xs">{priceInfo.label}</span>}
                     </div>
                 )}
             </div>

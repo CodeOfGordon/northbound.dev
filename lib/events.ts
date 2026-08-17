@@ -24,7 +24,6 @@ export interface EventDoc {
     endTime?: string;
     timezone: string;
     mode: 'online' | 'offline' | 'hybrid';
-    audience?: string;
     agenda?: string[];
     organizer: string;
     tags: string[];
@@ -103,7 +102,7 @@ function toDoc(d: any): EventDoc {
         image: d.image, venue: d.venue, country: d.country, city: d.city,
         date: d.date, time: d.time, endDate: d.endDate, endTime: d.endTime,
         timezone: d.timezone ?? 'America/Toronto', mode: d.mode,
-        audience: d.audience, agenda: d.agenda, organizer: d.organizer,
+        agenda: d.agenda, organizer: d.organizer,
         tags: d.tags ?? [], url: d.url ?? '', source: d.source ?? 'company',
         isFree: d.isFree, price: d.price, category: d.category, region: d.region,
     };
@@ -206,7 +205,9 @@ export async function queryEvents(params: EventQuery = {}): Promise<EventPage> {
 
 export async function getEventBySlug(slug: string): Promise<EventDoc | null> {
     await connectDB();
-    const doc = await Event.findOne({ slug }).lean();
+    // Slugs are stored lowercase (schema `lowercase: true`) — normalize the lookup
+    // so mixed-case URLs resolve here the same way they do on /api/events/[slug].
+    const doc = await Event.findOne({ slug: slug.toLowerCase() }).lean();
     return doc ? toDoc(doc) : null;
 }
 

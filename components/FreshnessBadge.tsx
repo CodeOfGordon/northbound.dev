@@ -1,4 +1,4 @@
-import { timeAgo } from '@/lib/format';
+import { olderThanDays, timeAgo } from '@/lib/format';
 import { cn } from '@/lib/utils';
 
 interface Props {
@@ -16,7 +16,7 @@ interface Props {
 const FreshnessBadge = ({ lastRunAt, variant = 'pill', className }: Props) => {
     if (!lastRunAt) return null;
     const ts = new Date(lastRunAt);
-    const stale = Date.now() - ts.getTime() > 2 * 86_400_000;
+    const stale = olderThanDays(ts, 2);
     const dot = stale ? 'bg-amber' : 'bg-primary';
 
     const inner = (

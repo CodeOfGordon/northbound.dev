@@ -6,7 +6,7 @@ import AddToCalendar from '@/components/AddToCalendar';
 import RegisterButton from '@/components/RegisterButton';
 import EventGrid from '@/components/EventGrid';
 import { CATEGORY_LABELS, HIDDEN_TAGS, LANE_LABELS, laneOf, MODE_LABELS } from '@/lib/constants';
-import { formatDate, formatTime } from '@/lib/format';
+import { formatDate, formatLocation, formatPrice, formatTime, formatVenue, isPlaceholderLoc } from '@/lib/format';
 import { getEventBySlug, getRelatedEvents } from '@/lib/events';
 
 type Params = Promise<{ slug: string }>;
@@ -37,9 +37,17 @@ function eventJsonLd(event: NonNullable<Awaited<ReturnType<typeof getEventBySlug
         location: online
             ? { '@type': 'VirtualLocation', url: event.url }
             : {
+                  // Placeholder venue/city/country ('TBA', 'North America') must not
+                  // reach structured data — omit unknown parts instead.
                   '@type': 'Place',
-                  name: event.venue,
-                  address: { '@type': 'PostalAddress', addressLocality: event.city, addressCountry: event.country },
+                  name: formatVenue(event.venue, event.mode) ?? (isPlaceholderLoc(event.city) ? 'To be announced' : event.city),
+                  address: {
+                      '@type': 'PostalAddress',
+                      ...(isPlaceholderLoc(event.city) ? {} : { addressLocality: event.city }),
+                      ...(isPlaceholderLoc(event.country) || /^(online|north america|international)$/i.test(event.country)
+                          ? {}
+                          : { addressCountry: event.country }),
+                  },
               },
         organizer: { '@type': 'Organization', name: event.organizer },
         ...(event.image ? { image: [event.image] } : {}),
@@ -73,7 +81,7 @@ const EventPage = async ({ params }: { params: Params }) => {
                     {chips.map((chip) => (
                         <span key={chip} className="pill">{chip}</span>
                     ))}
-                    {event.isFree && <span className="pill text-primary">Free</span>}
+                    {formatPrice(event.isFree, event.price).kind === 'free' && <span className="pill text-primary">Free</span>}
                 </div>
 
                 <h1 className="text-5xl max-sm:text-3xl">{event.title}</h1>
@@ -134,21 +142,31 @@ const EventPage = async ({ params }: { params: Params }) => {
                                 ) : (
                                     <>
                                         <MapPin className="text-primary mt-0.5 size-5 shrink-0" aria-hidden />
-                                        <span>
-                                            {event.venue}
-                                            <span className="text-light-200 block text-sm">
-                                                {event.city}, {event.country}
-                                            </span>
-                                        </span>
+                                        {(() => {
+                                            const venue = formatVenue(event.venue, event.mode);
+                                            const loc = formatLocation(event);
+                                            if (!venue && !loc) return <span className="text-light-200">Location TBA</span>;
+                                            return (
+                                                <span>
+                                                    {venue ?? <span className="text-light-200">Venue TBA</span>}
+                                                    {loc && <span className="text-light-200 block text-sm">{loc}</span>}
+                                                </span>
+                                            );
+                                        })()}
                                     </>
                                 )}
                             </span>
-                            {(event.price || event.isFree === false) && (
-                                <span className="flex items-center gap-3">
-                                    <Ticket className="text-primary size-5 shrink-0" aria-hidden />
-                                    {event.isFree ? 'Free' : event.price || 'Paid'}
-                                </span>
-                            )}
+                            {(() => {
+                                const priceInfo = formatPrice(event.isFree, event.price);
+                                return (
+                                    <span className="flex items-center gap-3">
+                                        <Ticket className="text-primary size-5 shrink-0" aria-hidden />
+                                        {priceInfo.kind === 'unknown'
+                                            ? <span className="text-light-200">Price not listed</span>
+                                            : priceInfo.label}
+                                    </span>
+                                );
+                            })()}
                         </div>
 
                         <RegisterButton event={event} />

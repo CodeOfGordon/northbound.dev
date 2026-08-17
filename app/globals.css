@@ -1,8 +1,6 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 
-@custom-variant dark (&:is(.dark *));
-
 /*
  * Design system — calm, dense, dark. Cool-neutral surfaces (not teal-tinted),
  * one mint accent used sparingly, mono for meta/labels. Reference points:
@@ -85,17 +83,6 @@
   @apply flex items-center justify-center;
 }
 
-/* Long lists: skip layout/paint for off-screen items — a big scroll-perf win with
-   many image cards. contain-intrinsic-size reserves space so the scrollbar is stable. */
-@utility cv-card {
-  content-visibility: auto;
-  contain-intrinsic-size: auto 22rem;
-}
-@utility cv-row {
-  content-visibility: auto;
-  contain-intrinsic-size: auto 5rem;
-}
-
 /* Horizontal rail with hidden scrollbar (home carousels). */
 @utility no-scrollbar {
   scrollbar-width: none;
@@ -124,36 +111,6 @@
   box-shadow: 0 1px 0 0 rgba(255, 255, 255, 0.02) inset, 0 8px 30px -12px rgba(0, 0, 0, 0.6);
 }
 
-/*
- * Subtle scroll-reveal — content fades/rises as it enters the viewport. Driven by a
- * CSS scroll timeline (animation-timeline: view()), so it runs on the compositor with
- * zero JS and never hijacks/janks the scroll. Gated behind @supports + no-reduced-
- * motion: where unsupported, the longhand below never applies and content is just
- * visible (base opacity 1).
- */
-@keyframes reveal-up {
-  from {
-    opacity: 0;
-    transform: translateY(16px);
-  }
-  to {
-    opacity: 1;
-    transform: none;
-  }
-}
-
-@supports (animation-timeline: view()) {
-  @media (prefers-reduced-motion: no-preference) {
-    .reveal {
-      animation-name: reveal-up;
-      animation-fill-mode: both;
-      animation-timing-function: linear;
-      animation-timeline: view();
-      animation-range: entry 0% entry 40%;
-    }
-  }
-}
-
 /* Lenis smooth scroll (components/SmoothScroll.tsx) — required stylesheet. */
 html.lenis,
 html.lenis body {
@@ -167,33 +124,6 @@ html.lenis body {
 }
 .lenis.lenis-stopped {
   overflow: hidden;
-}
-
-/* Image skeleton — an animated shimmer shows until a scraped image decodes, then the
-   image fades in over it (so the grid resolves smoothly instead of popping in). */
-@keyframes shimmer {
-  to {
-    transform: translateX(100%);
-  }
-}
-.skeleton-overlay {
-  position: absolute;
-  inset: 0;
-  overflow: hidden;
-  background: var(--color-dark-200);
-}
-.skeleton-overlay::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  transform: translateX(-100%);
-  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.06), transparent);
-  animation: shimmer 1.5s infinite;
-}
-@media (prefers-reduced-motion: reduce) {
-  .skeleton-overlay::after {
-    animation: none;
-  }
 }
 
 @layer base {

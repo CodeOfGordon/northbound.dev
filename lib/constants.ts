@@ -1,18 +1,5 @@
 /** UI constants for filters, labels and chips (live data replaced the old sample events). */
 
-export const CITIES = [
-    'Toronto',
-    'Mississauga',
-    'Markham',
-    'Vaughan',
-    'Brampton',
-    'Waterloo',
-    'Ottawa',
-    'Montreal',
-    'Quebec City',
-    'Online',
-];
-
 export const CATEGORY_LABELS: Record<string, string> = {
     hackathon: 'Hackathon',
     meetup: 'Meetup',
@@ -49,6 +36,24 @@ export function laneOf(source: string, category?: string): Lane {
     return 'local';
 }
 
+/** Lane including the "everything" feed state — what URL params resolve to. */
+export type FeedLane = Lane | 'all';
+
+/** Lane from URL params — `source` may be the 'local' pseudo-source; absence of both → 'all'. */
+export function laneFromParams(source?: string | null, category?: string | null): FeedLane {
+    if (source === 'company') return 'company';
+    if (category === 'hackathon' || source === 'mlh' || source === 'hackathon') return 'hackathon';
+    if (source === 'local') return 'local';
+    return 'all';
+}
+
+/** Per-lane accent — kept subtle: a small dot + the hover border tint (shared by card + row). */
+export const LANE_ACCENT: Record<Lane, { dot: string; hover: string; text: string }> = {
+    company: { dot: 'bg-amber', hover: 'hover:border-amber/40', text: 'text-amber' },
+    hackathon: { dot: 'bg-primary', hover: 'hover:border-primary/50', text: 'text-primary' },
+    local: { dot: 'bg-light-200', hover: 'hover:border-light-200/40', text: 'text-light-200' },
+};
+
 export const MODE_LABELS: Record<string, string> = {
     offline: 'In person',
     online: 'Online',
@@ -62,19 +67,13 @@ export const REGION_LABELS: Record<string, string> = {
     online: 'Online',
 };
 
-/** Small flag/region indicator for cards + detail. Keyed by canonical country string. */
-export const COUNTRY_FLAG: Record<string, string> = {
-    Canada: '🇨🇦',
-    'United States': '🇺🇸',
-    Online: '🌐',
-    'North America': '🌎',
-};
-
 export const DATE_PRESETS = [
     { value: '', label: 'Upcoming' },
     { value: 'today', label: 'Today' },
     { value: 'week', label: 'This week' },
     { value: 'month', label: 'This month' },
+    { value: 'quarter', label: 'Next 3 months' },
+    { value: 'half', label: 'Next 6 months' },
 ];
 
 /** Tags shown on cards exclude the implicit baseline tag. */
