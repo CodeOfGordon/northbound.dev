@@ -474,6 +474,48 @@ SPAs whose FAQ is not a plain `<a>` in raw HTML — travel coverage was 3/42 bef
 
 ---
 
+## ADR-027 — Headless rendering for travel/application signals (2026-08-17)
+
+**Problem**: after the static enrichment pass, 27 of ~46 in-person US/CA hackathons had
+`travel: unknown` — not because the policy is unpublished, but because these sites are
+client-rendered SPAs whose FAQ is absent from raw HTML entirely. gordon's US filter
+("only ones known to reimburse travel") is only as good as this signal.
+
+**Decision**: fall back to Playwright (already a devDependency, Apache-2.0, 95k★) for
+hosts the cheap path leaves unresolved. Rejected: **Firecrawl** (169k★ but AGPL-3.0, and
+self-hosting wants Redis + workers), **crawl4ai** (79k★, Python — a whole toolchain in a
+Node repo), **Crawlee** (25k★, a full crawl framework with queues/storage we'd use ~5% of).
+All three drive a headless browser underneath anyway; using Playwright directly adds zero
+dependencies. CI installs only Chromium (`npx playwright install --with-deps chromium`);
+the repo is public so Actions minutes are free.
+
+**Three findings that shaped the implementation** (each cost a wrong result first):
+1. `innerText` drops collapsed FAQ answers — use `textContent` on a clone with
+   `script/style/noscript/svg` removed (raw `textContent` leaked CSS keyframes into
+   evidence snippets).
+2. Hydration is uneven (hacktx.com returned **1 character** on first paint) — poll for
+   >300 chars of body text instead of a fixed sleep.
+3. These accordions are **single-open**: batching clicks then reading loses everything but
+   the last panel. Read after every click with early exit, and click travel-worded
+   toggles first — HackRice's travel question is the 36th FAQ item and a DOM-order pass
+   exhausted the click budget before reaching it (its answer: "We do! This is what the
+   majority of our budget goes towards").
+
+Rendering runs only for unknown-travel hosts, ≤2 pages each, images/media/fonts aborted,
+`--no-render` escapes it, and a missing browser degrades to static-only with a warning.
+
+**Crawl etiquette** (these are volunteer-run student sites): the enrichment pass now reads
+`robots.txt` per host (cached per run, `User-agent: *` group, longest-match Allow/Disallow,
+fail-open when absent) and honors `Crawl-delay` when it exceeds our own 1.5 s spacing —
+which applies between *every* request including the rendered pages. Combined with the
+3/7-day staleness cadence (a TTL cache in effect), the 25-host budget, the 7-day backoff on
+failures, and no retries, a given site sees roughly 2–6 requests every few days from one
+sequential worker. Result after this pass: travel yes 3→7, no 7→10; application status went
+from mostly `unknown` to 21 open / 2 not_yet / 2 closed, which also feeds the "Apps open"
+badges and the digest's applications-open section.
+
+---
+
 ## Known follow-ups / tech debt
 - ~~`database/mongodb.ts` stray `v8` import~~ — already removed.
 - ~~`normalizeDate()` UTC day-shift~~ — **fixed 2026-06-10**: `normalizeDate`/`normalizeTime` extract wall-clock parts in the event's IANA timezone (`Intl.DateTimeFormat`); `event.model.ts` reuses the same helpers.

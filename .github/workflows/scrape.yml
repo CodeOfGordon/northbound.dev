@@ -125,6 +125,14 @@ jobs:
         if: steps.cfg.outputs.configured == 'true'
         run: npm ci
 
+      # Most university hackathon sites are client-rendered: their FAQ (and the
+      # travel-reimbursement policy in it) never appears in raw HTML. The script
+      # falls back to a real browser for those. Without this step it degrades to
+      # static-only with a warning rather than failing. (ADR-027)
+      - name: Install Chromium for JS rendering
+        if: steps.cfg.outputs.configured == 'true'
+        run: npx playwright install --with-deps chromium
+
       - name: Enrich hackathon events
         if: steps.cfg.outputs.configured == 'true'
         run: node scripts/enrich-hackathons.mjs --budget "${{ github.event.inputs.enrich_budget || '25' }}"

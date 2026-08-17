@@ -38,9 +38,11 @@ const ONLY_HOST = (() => {
     return i >= 0 ? String(args[i + 1] ?? '').toLowerCase() : null;
 })();
 const REFRESH_UNKNOWN = args.includes('--refresh-unknown');
+const NO_RENDER = args.includes('--no-render');
 
 const UA = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36';
 const FETCH_TIMEOUT_MS = 10_000;
+const RENDER_TIMEOUT_MS = 20_000;
 const SLEEP_BETWEEN_MS = 1_500;
 const HORIZON_DAYS = 183;
 
@@ -195,6 +197,163 @@ function isStale(doc, today) {
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+/* ---- JS rendering fallback ------------------------------------------------
+ * Most university hackathon sites are client-rendered SPAs: their FAQ (where
+ * the travel policy lives) is absent from the raw HTML entirely, so the static
+ * pass above can only ever return 'unknown' for them. Playwright is already a
+ * devDependency (it backs the screenshot tooling), and it is what Crawlee /
+ * Firecrawl / crawl4ai use underneath — so we drive it directly rather than
+ * adding a crawl framework we'd use 5% of. Rendering is the EXPENSIVE path, so
+ * it only runs for hosts the cheap path left unresolved. (ADR-027)
+ */
+let browserPromise = null;
+let renderOff = NO_RENDER;
+
+async function getBrowser() {
+    if (renderOff) return null;
+    if (!browserPromise) {
+        browserPromise = (async () => {
+            try {
+                const { chromium } = await import('playwright');
+                return await chromium.launch({ args: ['--no-sandbox', '--disable-dev-shm-usage'] });
+            } catch (e) {
+                console.warn(`::warning::JS rendering unavailable (${e.message}) — static HTML only.`);
+                renderOff = true;
+                return null;
+            }
+        })();
+    }
+    return browserPromise;
+}
+
+/**
+ * Full post-JavaScript text of a page. Uses textContent, not innerText: FAQ
+ * answers are usually in the DOM but collapsed, and innerText would drop
+ * exactly the hidden accordion text we're after.
+ */
+async function renderText(url, isEnough = () => false) {
+    const browser = await getBrowser();
+    if (!browser) return '';
+    const context = await browser.newContext({ userAgent: UA, viewport: { width: 1280, height: 900 } });
+    try {
+        const page = await context.newPage();
+        // Skip images/media/fonts — we only ever read text.
+        await page.route('**/*', (route) =>
+            ['image', 'media', 'font'].includes(route.request().resourceType()) ? route.abort() : route.continue(),
+        );
+        await page.goto(url, { waitUntil: 'domcontentloaded', timeout: RENDER_TIMEOUT_MS });
+
+        // Hydration is uneven across these sites (one returned a single
+        // character on first paint) — poll for real content instead of a fixed
+        // sleep, then give late-loading sections a short grace period.
+        await page
+            .waitForFunction(() => (document.body?.textContent ?? '').trim().length > 300, null, { timeout: 8_000 })
+            .catch(() => {});
+        await page.waitForTimeout(1_000);
+
+        // FAQ answers — where travel policy lives — are usually collapsed, and
+        // collapsed text is absent from textContent. Open <details> and click
+        // the toggles that look like FAQ questions before reading.
+        await page.evaluate(() => {
+            document.querySelectorAll('details').forEach((d) => d.setAttribute('open', ''));
+        });
+        const toggles = await page.$$(
+            'summary, button, [role="button"], [class*="accordion" i], [class*="faq" i], [class*="question" i]',
+        );
+        const candidates = [];
+        for (const el of toggles) {
+            const label = ((await el.textContent()) ?? '').trim();
+            // Questions end in '?'; also chase anything naming the policy directly.
+            if (label.length > 140 || !(label.endsWith('?') || /travel|reimburs|stipend/i.test(label))) continue;
+            candidates.push({ el, priority: /travel|reimburs|stipend/i.test(label) ? 0 : 1 });
+        }
+        // Travel questions first: long FAQ grids bury them (HackRice's is #36),
+        // and a plain DOM-order pass would exhaust the click budget before it.
+        candidates.sort((a, b) => a.priority - b.priority);
+
+        // textContent includes <style>/<script> bodies — strip them on a clone so
+        // evidence snippets are readable prose, not CSS keyframes.
+        const snapshot = async () =>
+            (
+                await page.evaluate(() => {
+                    const clone = document.body?.cloneNode(true);
+                    if (!clone) return '';
+                    clone.querySelectorAll('script, style, noscript, svg').forEach((n) => n.remove());
+                    return clone.textContent ?? '';
+                })
+            )
+                .replace(/\s+/g, ' ')
+                .trim();
+
+        let best = await snapshot();
+        if (isEnough(best)) return best;
+
+        for (const { el } of candidates.slice(0, 25)) {
+            // These accordions are single-open: each click collapses the last
+            // one, so read after EVERY click and stop as soon as the answer we
+            // came for is on screen — batching clicks then reading loses it.
+            await el.click({ timeout: 1_200, noWaitAfter: true }).catch(() => {});
+            await page.waitForTimeout(250);
+            const snap = await snapshot();
+            if (isEnough(snap)) return snap;
+            if (snap.length > best.length) best = snap;
+        }
+        return best;
+    } catch (e) {
+        console.warn(`  render failed ${url} — ${e.message}`);
+        return '';
+    } finally {
+        await context.close().catch(() => {});
+    }
+}
+
+/* ---- robots.txt ------------------------------------------------------------
+ * These are small volunteer-run student sites, so we behave like a courteous
+ * crawler: one robots.txt per host per run, cached, and we honor Disallow for
+ * `*` plus any Crawl-delay longer than our own pacing. Failing open on a
+ * missing/unreachable robots.txt is the standard reading of the spec.
+ */
+const robotsCache = new Map();
+
+async function getRobots(origin) {
+    if (robotsCache.has(origin)) return robotsCache.get(origin);
+    const rules = { disallow: [], allow: [], crawlDelayMs: 0 };
+    try {
+        const res = await fetch(`${origin}/robots.txt`, {
+            headers: { 'user-agent': UA },
+            signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+        });
+        if (res.ok && (res.headers.get('content-type') ?? '').includes('text')) {
+            let applies = false;
+            for (const raw of (await res.text()).split('\n')) {
+                const line = raw.split('#')[0].trim();
+                const [field, ...rest] = line.split(':');
+                const value = rest.join(':').trim();
+                if (!field || !value) continue;
+                const key = field.trim().toLowerCase();
+                if (key === 'user-agent') applies = value === '*';
+                else if (!applies) continue;
+                else if (key === 'disallow') rules.disallow.push(value);
+                else if (key === 'allow') rules.allow.push(value);
+                else if (key === 'crawl-delay') rules.crawlDelayMs = (parseFloat(value) || 0) * 1000;
+            }
+        }
+    } catch {
+        // no robots.txt / unreachable → fail open
+    }
+    robotsCache.set(origin, rules);
+    return rules;
+}
+
+/** Longest-match wins, Allow beating Disallow at equal length (standard behavior). */
+function robotsAllows(rules, pathname) {
+    const longest = (list) =>
+        list.filter((p) => p && pathname.startsWith(p)).reduce((max, p) => Math.max(max, p.length), -1);
+    const blocked = longest(rules.disallow);
+    if (blocked < 0) return true;
+    return longest(rules.allow) >= blocked;
+}
+
 async function fetchText(url) {
     const res = await fetch(url, {
         headers: { 'user-agent': UA, accept: 'text/html' },
@@ -251,14 +410,28 @@ async function main() {
         let fetchStatus = 'ok';
         let application = { status: 'unknown' };
         let travel = { status: 'unknown' };
+        let usedRender = false;
+        let hostDelayMs = SLEEP_BETWEEN_MS; // raised if robots.txt asks for more
 
         try {
             const landingUrl = docs[0].url;
+
+            // Ask permission before touching the site at all.
+            const origin = new URL(landingUrl).origin;
+            const robots = await getRobots(origin);
+            hostDelayMs = Math.max(SLEEP_BETWEEN_MS, robots.crawlDelayMs);
+            if (!robotsAllows(robots, new URL(landingUrl).pathname)) {
+                console.warn(`  ${host}: robots.txt disallows — skipping`);
+                summary.push({ host, docs: docs.length, fetch: 'blocked', apps: 'unknown', deadline: '', travel: 'unknown', src: 'site', js: '' });
+                await sleep(hostDelayMs);
+                continue;
+            }
+
             const landingHtml = await fetchText(landingUrl);
             let text = pageText(landingHtml);
             const faqUrl = findFaqLink(landingHtml, landingUrl);
-            if (faqUrl && faqUrl.replace(/\/$/, '') !== landingUrl.replace(/\/$/, '')) {
-                await sleep(SLEEP_BETWEEN_MS);
+            if (faqUrl && faqUrl.replace(/\/$/, '') !== landingUrl.replace(/\/$/, '') && robotsAllows(robots, new URL(faqUrl).pathname)) {
+                await sleep(hostDelayMs);
                 try {
                     text += ' ' + pageText(await fetchText(faqUrl));
                 } catch (e) {
@@ -276,9 +449,10 @@ async function main() {
                 const tried = new Set([landingUrl.replace(/\/$/, ''), (faqUrl ?? '').replace(/\/$/, '')]);
                 for (const path of TRAVEL_PROBE_PATHS) {
                     const probe = new URL(path, landingUrl).href;
+                    if (!robotsAllows(robots, path)) continue;
                     if (tried.has(probe.replace(/\/$/, ''))) continue;
                     tried.add(probe.replace(/\/$/, ''));
-                    await sleep(SLEEP_BETWEEN_MS);
+                    await sleep(hostDelayMs);
                     let probeText;
                     try {
                         probeText = pageText(await fetchText(probe));
@@ -289,6 +463,29 @@ async function main() {
                     if (probeTravel.status !== 'unknown') {
                         travel = probeTravel;
                         if (application.status === 'unknown') application = classifyApplication(probeText, anchorDate);
+                        break;
+                    }
+                }
+            }
+
+            // Static HTML said nothing about travel — the site is very likely a
+            // client-rendered SPA. Fall back to a real browser (landing page,
+            // then its /faq route) and re-classify the post-JS text.
+            if (travel.status === 'unknown') {
+                const resolvesTravel = (t) => classifyTravel(t).status !== 'unknown';
+                for (const url of [landingUrl, new URL('/faq', landingUrl).href]) {
+                    if (!robotsAllows(robots, new URL(url).pathname)) continue;
+                    await sleep(hostDelayMs); // pace the rendered pages too
+                    const rendered = await renderText(url, resolvesTravel);
+                    if (!rendered) continue;
+                    usedRender = true;
+                    if (application.status === 'unknown') {
+                        const a = classifyApplication(rendered, anchorDate);
+                        if (a.status !== 'unknown') application = a;
+                    }
+                    const t = classifyTravel(rendered);
+                    if (t.status !== 'unknown') {
+                        travel = t;
                         break;
                     }
                 }
@@ -328,13 +525,14 @@ async function main() {
                 await events.updateOne({ _id: doc._id }, update);
             }
         }
-        summary.push({ host, docs: docs.length, fetch: fetchStatus, apps: application.status, deadline: application.deadline ?? '', travel: travel.status, src: source });
-        await sleep(SLEEP_BETWEEN_MS);
+        summary.push({ host, docs: docs.length, fetch: fetchStatus, apps: application.status, deadline: application.deadline ?? '', travel: travel.status, src: source, js: usedRender ? 'yes' : '' });
+        await sleep(hostDelayMs);
     }
 
     console.table(summary);
     if (skippedForBudget > 0) console.log(`NOTE: ${skippedForBudget} stale host(s) skipped for budget — they'll be picked up on later runs.`);
     if (DRY_RUN) console.log('Dry run: no writes performed.');
+    if (browserPromise) await (await browserPromise)?.close().catch(() => {});
     await mongoose.disconnect();
 }
 
