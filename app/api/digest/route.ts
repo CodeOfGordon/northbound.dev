@@ -20,12 +20,18 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json().catch(() => ({}));
+    const strings = (v: unknown, cap: number): string[] | undefined =>
+        Array.isArray(v) ? v.filter((s): s is string => typeof s === 'string').slice(0, cap) : undefined;
 
     await connectDB();
     const result = await runDigest({
         dryRun: body?.dryRun === true,
         since: typeof body?.since === 'string' ? body.since : undefined,
         force: body?.force === true,
+        mode: body?.mode === 'compose' || body?.mode === 'confirm' ? body.mode : undefined,
+        to: strings(body?.to, 50),
+        cursor: typeof body?.cursor === 'string' ? body.cursor : undefined,
+        openIds: strings(body?.openIds, 500),
     });
 
     return NextResponse.json(result, { status: result.ok ? 200 : 500 });

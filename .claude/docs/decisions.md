@@ -407,6 +407,30 @@ venue/country store `''` going forward (city fallback untouched — fingerprint 
 
 ---
 
+## ADR-025 — Digest delivery pivots to Gmail SMTP in the GH runner (2026-08-17)
+
+**Why**: gordon wants recipients beyond himself at strictly $0. Resend's free tier only
+delivers to the account owner without a verified custom domain (no single-sender option),
+and every other ESP either needs a domain too or fails SPF/DKIM alignment when sending
+"from" a gmail.com address. Gmail's own SMTP sends from the business account
+(`northbound.dev.events@gmail.com`) to anyone, free (500 rcpt/day; App Password + 2FA;
+still supported 2026) — but **Vercel blocks outbound SMTP**, so the send moves to the
+GitHub Actions runner (like enrich).
+
+**How — compose/confirm protocol** (no logic duplication, at-least-once preserved):
+`POST /api/digest {mode:'compose', to:[...]}` builds sections + renders and returns
+`{subject, html, text, to, openIds, cursor}` with NO state change (empty results advance
+the considered-through cursor server-side); `scripts/send-digest.mjs` (nodemailer,
+smtp.gmail.com:465) sends and then calls `{mode:'confirm', cursor, openIds}` which
+advances `lastDigestAt`/`lastSentAt` and stamps `notifiedOpenAt`. A failed send exits 1
+with nothing confirmed → full retry next night. New repo secrets: `GMAIL_USER`,
+`GMAIL_APP_PASSWORD`, `DIGEST_EMAIL` (comma list — friends can be appended any time).
+The default-mode Resend path is retained as a local testing lever only; Vercel's
+RESEND_API_KEY/DIGEST_EMAIL envs are no longer used by the nightly. `nodemailer` added
+as a devDependency (runner-only, zero transitive deps).
+
+---
+
 ## Known follow-ups / tech debt
 - ~~`database/mongodb.ts` stray `v8` import~~ — already removed.
 - ~~`normalizeDate()` UTC day-shift~~ — **fixed 2026-06-10**: `normalizeDate`/`normalizeTime` extract wall-clock parts in the event's IANA timezone (`Intl.DateTimeFormat`); `event.model.ts` reuses the same helpers.

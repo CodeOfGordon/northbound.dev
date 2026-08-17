@@ -25,6 +25,19 @@ export interface DigestOptions {
     since?: string;
     /** Bypass the same-day guard. */
     force?: boolean;
+    /**
+     * 'send' (default): full Resend send — local testing lever.
+     * 'compose': build + render only, return the email + state handles; the GH
+     *   runner sends via Gmail SMTP (Vercel blocks outbound SMTP — ADR-025).
+     * 'confirm': the runner's send succeeded — advance cursor + stamp markers.
+     */
+    mode?: 'send' | 'compose' | 'confirm';
+    /** compose: recipient list override (the runner passes its repo secret). */
+    to?: string[];
+    /** confirm: the cursor returned by compose. */
+    cursor?: string;
+    /** confirm: the openIds returned by compose. */
+    openIds?: string[];
 }
 
 export interface DigestResult {
@@ -35,6 +48,16 @@ export interface DigestResult {
     error?: string;
     counts?: { newEvents: number; appsOpen: number; deadlines: number };
     cursor?: string;
+    /** compose: nothing to send (cursor already advanced server-side). */
+    empty?: boolean;
+    /** compose payload for the runner. */
+    subject?: string;
+    html?: string;
+    text?: string;
+    to?: string[];
+    openIds?: string[];
+    /** confirm acknowledged. */
+    confirmed?: boolean;
 }
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://northbound.vercel.app';
@@ -54,15 +77,36 @@ const isOpen = (d: any): boolean =>
     d.applicationStatus === 'open' || (d.applicationStatus == null && d.enrichment?.application?.status === 'open');
 
 export async function runDigest(opts: DigestOptions = {}): Promise<DigestResult> {
+    // confirm: the runner delivered the composed email — advance state exactly
+    // as a successful in-process send would have. Needs no section building.
+    if (opts.mode === 'confirm') {
+        if (!opts.cursor || Number.isNaN(Date.parse(opts.cursor))) {
+            return { ok: false, sent: false, error: 'confirm: missing/invalid cursor' };
+        }
+        const at = new Date(opts.cursor);
+        await DigestMeta.updateOne(
+            { key: 'digest' },
+            { $set: { lastDigestAt: at, lastSentAt: at, lastResult: 'smtp-confirmed' }, $setOnInsert: { key: 'digest' } },
+            { upsert: true },
+        );
+        if (opts.openIds?.length) {
+            await Event.updateMany({ _id: { $in: opts.openIds } }, { $set: { notifiedOpenAt: at } });
+        }
+        return { ok: true, sent: true, confirmed: true, cursor: opts.cursor };
+    }
+
+    const mode = opts.mode ?? 'send';
     const apiKey = process.env.RESEND_API_KEY;
-    // Comma-separated recipient list. NOTE: recipients beyond the Resend account
-    // owner only receive mail once a domain is verified and DIGEST_FROM is set.
-    const to = (process.env.DIGEST_EMAIL ?? '').split(',').map((s) => s.trim()).filter(Boolean);
+    // Recipients: the runner's repo secret (compose body) wins; env is the
+    // fallback for the local send path. Comma-separated.
+    const to = opts.to?.length
+        ? opts.to
+        : (process.env.DIGEST_EMAIL ?? '').split(',').map((s) => s.trim()).filter(Boolean);
     // Not-yet-configured is a soft skip (green job, reason in the step log) —
-    // a hard 500 would paint every nightly run red until Resend is set up.
+    // a hard 500 would paint every nightly run red until email is set up.
     // A send FAILURE with config present still errors loudly below.
-    if (!apiKey || !to.length) {
-        return { ok: true, sent: false, skipped: 'not-configured: RESEND_API_KEY and/or DIGEST_EMAIL unset' };
+    if (!to.length || (mode === 'send' && !apiKey)) {
+        return { ok: true, sent: false, skipped: 'not-configured: recipients and/or RESEND_API_KEY unset' };
     }
 
     const runStarted = new Date();
@@ -143,11 +187,29 @@ export async function runDigest(opts: DigestOptions = {}): Promise<DigestResult>
         if (!opts.dryRun) {
             await DigestMeta.updateOne({ key: 'digest' }, { $set: { lastDigestAt: runStarted, lastResult: 'empty' } });
         }
-        return { ok: true, sent: false, counts, cursor: runStarted.toISOString() };
+        return { ok: true, sent: false, empty: true, counts, cursor: runStarted.toISOString() };
     }
 
     const { subject, html, text } = renderDigest(sections, SITE_URL, monthDay(today));
-    const sendError = await sendEmail({ apiKey, to, subject, html, text });
+
+    // compose: hand the rendered email + state handles to the runner; nothing
+    // is sent and no state moves until its confirm call comes back.
+    if (mode === 'compose') {
+        return {
+            ok: true,
+            sent: false,
+            empty: false,
+            subject,
+            html,
+            text,
+            to,
+            openIds: appsOpenIds.map(String),
+            counts,
+            cursor: runStarted.toISOString(),
+        };
+    }
+
+    const sendError = await sendEmail({ apiKey: apiKey!, to, subject, html, text });
     if (sendError) return { ok: false, sent: false, error: sendError, counts };
 
     // Send confirmed — advance state. Best-effort (a bookkeeping failure yields
