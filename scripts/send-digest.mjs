@@ -46,7 +46,7 @@ async function api(body) {
     return json;
 }
 
-const composed = await api({ mode: 'compose', force: FORCE, dryRun: DRY_RUN });
+const composed = await api({ mode: 'compose', force: FORCE, dryRun: DRY_RUN, sender: GMAIL_USER });
 const messages = composed.messages ?? [];
 console.log(`compose: ${composed.subscribers ?? 0} active subscriber(s), ${messages.length} message(s)` +
     (composed.skipped ? ` — ${composed.skipped}` : ''));
@@ -77,6 +77,7 @@ for (const m of messages) {
     try {
         await transporter.sendMail({
             from: `Northbound <${GMAIL_USER}>`, // Gmail requires from = the authenticated account
+            replyTo: GMAIL_USER, // a real, monitored reply path reads as legitimate mail
             to: m.to,
             subject: m.subject,
             html: m.html,

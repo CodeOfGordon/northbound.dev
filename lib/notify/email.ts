@@ -75,7 +75,7 @@ export function renderDigest(
     sections: DigestSections,
     siteUrl: string,
     todayLabel: string,
-    opts: { email: string; unsubscribeUrl: string; oneClickUrl: string; manageUrl: string },
+    opts: { email: string; unsubscribeUrl: string; oneClickUrl: string; manageUrl: string; sender?: string },
 ): RenderedEmail {
     const counts = [
         sections.newEvents.length ? `${sections.newEvents.length} new for you` : '',
@@ -85,6 +85,14 @@ export function renderDigest(
     const subject = `Northbound: ${counts.join(' · ')} — ${todayLabel}`;
 
     const applyExtra = (item: DigestItem) => ` · <a href="${item.url}" style="${LINK}">Apply →</a>`;
+    const host = (() => {
+        try {
+            return new URL(siteUrl).hostname;
+        } catch {
+            return 'northbound-dev.vercel.app';
+        }
+    })();
+    const sender = opts.sender;
 
     const html = `
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" bgcolor="#f3f4f6" style="background:#f3f4f6;padding:24px 0;">
@@ -128,9 +136,15 @@ export function renderDigest(
         headers: {
             // RFC 2369 + RFC 8058: mailbox providers render a native unsubscribe
             // control and POST here; the endpoint honors it immediately.
-            'List-Unsubscribe': `<${opts.oneClickUrl}>, <mailto:northbound.dev.events@gmail.com?subject=unsubscribe>`,
+            'List-Unsubscribe': `<${opts.oneClickUrl}>${sender ? `, <mailto:${sender}?subject=unsubscribe>` : ''}`,
             'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
-            'List-Id': `Northbound event digest <digest.northbound>`,
+            // RFC 2919 requires a domain-style identifier here. The previous
+            // `<digest.northbound>` was malformed, which filters read as a
+            // (mild) bad signal rather than as list metadata.
+            'List-Id': `Northbound event digest <digest.${host}>`,
+            // RFC 3834: honestly declare automated mail and stop vacation
+            // responders from replying to it.
+            'Auto-Submitted': 'auto-generated',
         },
     };
 }

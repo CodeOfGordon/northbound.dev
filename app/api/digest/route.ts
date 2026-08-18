@@ -46,6 +46,7 @@ export async function POST(request: NextRequest) {
         mode: body?.mode === 'confirm' ? 'confirm' : 'compose',
         force: body?.force === true,
         dryRun: body?.dryRun === true,
+        sender: typeof body?.sender === 'string' ? body.sender : undefined,
         cursor: typeof body?.cursor === 'string' ? body.cursor : undefined,
         results,
     });

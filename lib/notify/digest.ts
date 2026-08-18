@@ -36,6 +36,8 @@ export interface DigestOptions {
     cursor?: string;
     /** confirm: which subscribers were delivered, and what was announced to them. */
     results?: { subscriberId: string; openIds?: string[] }[];
+    /** compose: the address the runner will send from (used in List-Unsubscribe). */
+    sender?: string;
 }
 
 export interface DigestMessage {
@@ -207,6 +209,8 @@ export async function runDigest(opts: DigestOptions = {}): Promise<DigestResult>
             unsubscribeUrl: `${siteUrl}/unsubscribe?token=${sub.token}`,
             oneClickUrl: `${siteUrl}/api/unsubscribe?token=${sub.token}`,
             manageUrl: `${siteUrl}/subscribe?token=${sub.token}`,
+            // The runner sends as this address; the mailto unsubscribe must match it.
+            sender: opts.sender,
         });
 
         messages.push({
