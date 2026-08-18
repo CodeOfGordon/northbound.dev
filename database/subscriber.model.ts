@@ -29,6 +29,12 @@ export interface ISubscriber extends Document {
     lastSentAt?: Date;
     /** Event ids already announced as "applications open" to THIS subscriber. */
     notifiedOpenIds: string[];
+    /**
+     * Message-ID of their last digest. The next one is sent as a reply to it,
+     * so every digest lands in ONE Gmail conversation — rescuing that thread
+     * from spam (or replying once) then carries forward to later sends.
+     */
+    lastMessageId?: string;
     unsubscribedAt?: Date;
     createdAt: Date;
     updatedAt: Date;
@@ -71,6 +77,7 @@ const SubscriberSchema = new Schema<ISubscriber>(
         lastDigestAt: { type: Date },
         lastSentAt: { type: Date },
         notifiedOpenIds: { type: [String], default: [] },
+        lastMessageId: { type: String },
         unsubscribedAt: { type: Date },
     },
     { timestamps: true, collection: 'subscribers' },

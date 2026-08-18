@@ -31,11 +31,12 @@ export async function POST(request: NextRequest) {
               .filter((r: unknown): r is { subscriberId: string; openIds?: string[] } =>
                   !!r && typeof (r as { subscriberId?: unknown }).subscriberId === 'string')
               .slice(0, 200)
-              .map((r: { subscriberId: string; openIds?: unknown }) => ({
+              .map((r: { subscriberId: string; openIds?: unknown; messageId?: unknown }) => ({
                   subscriberId: r.subscriberId,
                   openIds: Array.isArray(r.openIds)
                       ? r.openIds.filter((id): id is string => typeof id === 'string').slice(0, 500)
                       : [],
+                  messageId: typeof r.messageId === 'string' ? r.messageId.slice(0, 400) : undefined,
               }))
         : undefined;
 

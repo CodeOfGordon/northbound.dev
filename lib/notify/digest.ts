@@ -35,7 +35,7 @@ export interface DigestOptions {
     /** confirm: the cursor compose returned. */
     cursor?: string;
     /** confirm: which subscribers were delivered, and what was announced to them. */
-    results?: { subscriberId: string; openIds?: string[] }[];
+    results?: { subscriberId: string; openIds?: string[]; messageId?: string }[];
     /** compose: the address the runner will send from (used in List-Unsubscribe). */
     sender?: string;
 }
@@ -50,6 +50,8 @@ export interface DigestMessage {
     /** Event ids announced as "applications open" — stamped on confirm. */
     openIds: string[];
     counts: { newEvents: number; appsOpen: number; deadlines: number };
+    /** Message-ID of their previous digest — the runner threads onto it. */
+    inReplyTo?: string;
 }
 
 export interface DigestResult {
@@ -219,6 +221,7 @@ export async function runDigest(opts: DigestOptions = {}): Promise<DigestResult>
             ...rendered,
             openIds,
             counts,
+            inReplyTo: sub.lastMessageId,
         });
     }
 
@@ -240,7 +243,10 @@ async function confirmSends(opts: DigestOptions): Promise<DigestResult> {
     const results = opts.results ?? [];
 
     for (const r of results) {
-        const update: Record<string, unknown> = { $set: { lastDigestAt: at, lastSentAt: at } };
+        const set: Record<string, unknown> = { lastDigestAt: at, lastSentAt: at };
+        // Anchor the next digest onto this one so they stay one conversation.
+        if (r.messageId) set.lastMessageId = r.messageId;
+        const update: Record<string, unknown> = { $set: set };
         if (r.openIds?.length) update.$addToSet = { notifiedOpenIds: { $each: r.openIds } };
         await Subscriber.updateOne({ _id: r.subscriberId }, update);
     }

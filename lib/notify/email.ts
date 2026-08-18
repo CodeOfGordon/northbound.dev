@@ -41,6 +41,13 @@ export interface RenderedEmail {
     headers: Record<string, string>;
 }
 
+/**
+ * RFC 3834 marker: honest about automated mail and stops vacation responders
+ * replying to it. Standard, but its effect on Gmail *sorting* is unproven — if
+ * spam placement is ever traced to it, flip this to false and re-test.
+ */
+const SEND_AUTO_SUBMITTED = true;
+
 const MUTED = 'color:#6b7280;font-size:13px;';
 const LINK = 'color:#2563eb;text-decoration:none;font-weight:600;';
 
@@ -60,7 +67,6 @@ function itemRow(siteUrl: string, item: DigestItem, extra?: string): string {
         <a href="${siteUrl}/events/${item.slug}" style="${LINK}font-size:15px;">${escapeHtml(item.title)}</a>
         <div style="${MUTED}padding-top:2px;">${when} · ${escapeHtml(where)}${extra ?? ''}</div>
         ${notes.length ? `<div style="${MUTED}padding-top:2px;">${notes.join(' · ')}</div>` : ''}
-        ${item.labels?.length ? `<div style="${MUTED}padding-top:2px;">matched: ${escapeHtml(item.labels.join(', '))}</div>` : ''}
       </td></tr>`;
 }
 
@@ -93,6 +99,9 @@ export function renderDigest(
         }
     })();
     const sender = opts.sender;
+    // One "why you got this" line at the foot instead of repeating it under
+    // every row — same transparency, far less machine-generated boilerplate.
+    const matchedSummary = [...new Set(sections.newEvents.flatMap((i) => i.labels ?? []))].join(', ');
 
     const html = `
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" bgcolor="#f3f4f6" style="background:#f3f4f6;padding:24px 0;">
@@ -105,6 +114,7 @@ export function renderDigest(
       ${section('New events for you', sections.newEvents.map((i) => itemRow(siteUrl, i)).join(''))}
       <tr><td style="padding-top:24px;border-top:1px solid #e5e7eb;">
         <div style="${MUTED}">
+          ${matchedSummary ? `Matched your interests: ${escapeHtml(matchedSummary)}.<br>` : ''}
           You're receiving this because ${escapeHtml(opts.email)} subscribed to the Northbound event digest.<br>
           <a href="${opts.manageUrl}" style="${LINK}">Change what you get</a> ·
           <a href="${opts.unsubscribeUrl}" style="${LINK}">Unsubscribe</a> ·
@@ -142,9 +152,7 @@ export function renderDigest(
             // `<digest.northbound>` was malformed, which filters read as a
             // (mild) bad signal rather than as list metadata.
             'List-Id': `Northbound event digest <digest.${host}>`,
-            // RFC 3834: honestly declare automated mail and stop vacation
-            // responders from replying to it.
-            'Auto-Submitted': 'auto-generated',
+            ...(SEND_AUTO_SUBMITTED ? { 'Auto-Submitted': 'auto-generated' } : {}),
         },
     };
 }

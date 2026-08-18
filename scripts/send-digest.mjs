@@ -28,6 +28,14 @@ function env(name) {
 
 const FORCE = process.argv.includes('--force');
 const DRY_RUN = process.argv.includes('--dry-run');
+/**
+ * Redirect this run's mail to one address (deliverability testing — e.g. a
+ * mail-tester.com address). Nothing is confirmed, so no subscriber state moves.
+ */
+const TO_OVERRIDE = (() => {
+    const i = process.argv.indexOf('--to');
+    return i >= 0 ? String(process.argv[i + 1] ?? '').trim() : '';
+})();
 
 const SITE_URL = env('SITE_URL').replace(/\/$/, '');
 const CRON_SECRET = env('CRON_SECRET');
@@ -75,17 +83,23 @@ let failures = 0;
 
 for (const m of messages) {
     try {
-        await transporter.sendMail({
+        const info = await transporter.sendMail({
             from: `Northbound <${GMAIL_USER}>`, // Gmail requires from = the authenticated account
             replyTo: GMAIL_USER, // a real, monitored reply path reads as legitimate mail
-            to: m.to,
+            to: TO_OVERRIDE || m.to,
             subject: m.subject,
             html: m.html,
             text: m.text,
             headers: m.headers, // List-Unsubscribe + one-click (RFC 8058)
+            // Thread onto their previous digest: Gmail keeps one conversation,
+            // so rescuing it from spam once carries to every later send.
+            ...(m.inReplyTo ? { inReplyTo: m.inReplyTo, references: [m.inReplyTo] } : {}),
         });
-        delivered.push({ subscriberId: m.subscriberId, openIds: m.openIds ?? [] });
-        console.log(`sent → ${m.to.join(', ')}`);
+        // A redirected test send must not advance anyone's real state.
+        if (!TO_OVERRIDE) {
+            delivered.push({ subscriberId: m.subscriberId, openIds: m.openIds ?? [], messageId: info?.messageId });
+        }
+        console.log(`sent → ${TO_OVERRIDE || m.to.join(', ')}${m.inReplyTo ? ' (threaded)' : ''}${TO_OVERRIDE ? ' [test redirect — not confirmed]' : ''}`);
     } catch (e) {
         failures += 1;
         console.error(`::error::send failed for ${m.to.join(', ')}: ${e.message}`);
