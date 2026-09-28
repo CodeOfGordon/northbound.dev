@@ -26,8 +26,10 @@ fetches, so they come from search-index snippets and still need a live confirmat
 - **Event:** HackPrinceton Fall 2026 runs **Nov 13–15, 2026**. The site is `hackprinceton.com`.
 - **Apply portal:** `my.hackprinceton.com`, which is a sign-in page.
 - **Deadline:** **Sept 28, 2026**. It was announced on HackPrinceton's social accounts, e.g. a
-  Facebook post titled "applications close in just 12 days". The indexed text of
-  `hackprinceton.com` contains **no deadline string at all**.
+  Facebook post titled "applications close in just 12 days". The sources disagree on whether
+  the site showed it. Search-index snippets of `hackprinceton.com` contain no deadline string.
+  A third-party curated list checked on 2026-09-08 (GannonCodeX `hackathons.json`) says the
+  homepage did show Sep 28. It may have appeared late, or only in client-rendered text.
 - **Priority tier:** none found for Fall 2026. The Fall 2025 cycle appears to have had a priority
   and a regular tier (unconfirmed).
 
@@ -36,7 +38,7 @@ Code causes, in the order a signal has to survive them:
 | # | Where | What happens |
 |---|---|---|
 | 1 | `lib/data/watchlist.ts` | HackPrinceton is **not on the watchlist**, so it exists only if MLH season data lists it. MLH carries no application fields, so its application state depends entirely on the enrichment regex. *Whether an F26 doc exists in prod is unverified: the MongoDB MCP failed to connect this session and no `MONGODB_URI` is set here. A read-only query is step 0 of Phase 1.* |
-| 2 | the site itself | The deadline appears **only in social posts and behind a sign-in portal**. No HTML classifier, however good, reads it from `hackprinceton.com`. Getting this case right takes **curation**, plus a **"deadline not published" risk flag** that tells you to go check (F6), not better regexes alone. |
+| 2 | the site itself | The deadline was announced mainly in social posts and on a sign-in portal. If it was on the homepage at all (sources conflict, see Facts), it was never stored, whether because the static fetch missed client-rendered text or because the phrasing didn't match. Catching the social-only majors reliably takes **curation**, plus a **"deadline not published" risk flag** that tells you to go check (F6), not better regexes alone. |
 | 3 | `scripts/enrich-hackathons.mjs` `extractDeadline()` | Even when a site does state deadlines, this returns the **first** "apply/register … by/due/deadline/closes … <MonthName> <day>" match. "Priority deadline: Sep 13 · Regular: Sep 20" yields nothing or one arbitrary date. There is no concept of deadline *kinds*. |
 | 4 | `lib/notify/match.ts:69` + `lib/notify/digest.ts:152-157` | `minDaysOut` is checked against the event **start date** in *every* digest section, including deadline reminders. HackPrinceton (Nov 13) is 46 days out and clears even the "6 weeks" option (45) **by one day**, which shows how arbitrary the gate is. Cal Hacks (Oct 23) was 33 days out on its Sep 20 deadline day and 40 days out on its Sep 13 priority day, so a "6 weeks" subscriber would have lost **both of its deadline reminders**, even if the deadlines had been parsed (they weren't, see §1b #2). The option was a proxy for "applications are probably still open", and it is the wrong proxy. |
 | 5 | `lib/notify/digest.ts` deadlines loop (`if (!isOpen(d)) continue`) | Deadline reminders require status `open`. A **known deadline with status `unknown`**, which is common on SPA sites where no "apply now" text is found, **never produces a reminder**. |
@@ -430,7 +432,7 @@ live-verified) and is used to set the defaults above:
 | Hackathon | Tiers | Dates / notes |
 |---|---|---|
 | Cal Hacks 13.0 | priority + regular | 9/13, 9/20 → event Oct 23 (numeric dates on site) |
-| HackPrinceton F26 | single (as found) | Sep 28 → event Nov 13; only on social posts / sign-in portal |
+| HackPrinceton F26 | single (as found) | Sep 28 → event Nov 13; social posts + portal; homepage unclear (sources conflict) |
 | MHacks 2026 | early + regular | Aug 7 (11:59 PM ET), Sep 12 |
 | HackGT 13 | early bird + regular | early round bundled with travel-reimbursement applications |
 | TreeHacks 2027 | priority (Stanford only) + regular | Oct 19 restricted, Nov 1; 2026 was extended to Nov 2, 11:59 PM PT |
@@ -481,8 +483,8 @@ Takeaways:
 - **Live dry runs** (read-only):
   - `node --env-file=.env.local scripts/enrich-hackathons.mjs --dry-run --host calhacks.io`
     → `closed`.
-  - `--host hackprinceton.com` → application `unknown` from the site (the deadline isn't
-    published there), and the resolver shows the curated Sep 28 deadline, or, without
+  - `--host hackprinceton.com` → find out whether the rendered homepage carries the
+    deadline. If it doesn't, expect application `unknown` from the site, and the resolver shows the curated Sep 28 deadline, or, without
     curation, the "deadline not published" risk flag.
 - **Digest compose `dryRun`** against prod, read-only: a HackPrinceton-shaped event lands in
   "Closing soon" regardless of how far away its start date is.
