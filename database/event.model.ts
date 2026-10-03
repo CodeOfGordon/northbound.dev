@@ -3,6 +3,25 @@ import { normalizeDate, normalizeTime } from './normalize';
 
 
 /**
+ * One application deadline tier (ADR-029). Hackathons publish several — a
+ * priority/early round, the regular close, sometimes a separate travel-funding
+ * cut-off — and which one matters depends on who is applying, so they are
+ * stored separately and resolved per viewer at read time (lib/hackathon.ts).
+ */
+export interface AppDeadline {
+    kind: 'priority' | 'regular' | 'international' | 'travel';
+    date: string;                                     // YYYY-MM-DD (I5: lexical compare)
+    time?: string;                                    // HH:MM 24h, when the site states one
+    tz?: string;                                      // IANA, when the site states a zone ("PT", "AoE")
+    /** 'restricted' = a tier most viewers can't use ("Stanford students only"). */
+    audience: 'all' | 'domestic' | 'international' | 'restricted';
+    audienceNote?: string;
+    source: 'site' | 'curated' | 'platform';
+    evidence?: string;                                // the sentence it was read from
+    extendedFrom?: string;                            // YYYY-MM-DD this one replaced
+}
+
+/**
  * Enrichment-script-owned subdocument (scripts/enrich-hackathons.mjs) — the
  * scrape pipeline must NEVER write this path: it is excluded from CanonicalEvent,
  * so the nightly whole-doc $set can't wipe it. See ADR-018.
@@ -14,8 +33,22 @@ export interface EventEnrichment {
     fetchStatus: 'ok' | 'fetch_failed' | 'blocked';
     application: {
         status: 'open' | 'closed' | 'not_yet' | 'unknown';
+        /** Legacy single deadline: the final all-audience close (kept for old readers). */
         deadline?: string;                            // YYYY-MM-DD
         evidence?: string;                            // snippet the classifier matched on
+        /** Every tier seen, site-read and curated (ADR-029). */
+        deadlines?: AppDeadline[];
+        /** "Reviewed on a rolling basis" — apply early, no hard date. */
+        rolling?: boolean;
+        /** Closed to new applicants but taking a waitlist. */
+        waitlist?: boolean;
+        /** Last time hacker applications were observed open / closed (ISO). */
+        openSeenAt?: string;
+        closedSeenAt?: string;
+        /** The hacker-application portal the status was read from, when one was found. */
+        portal?: string;
+        /** Last application-only check (the 6-hourly light pass), ISO. */
+        checkedAt?: string;
     };
     travel: {
         status: 'yes' | 'no' | 'unknown';
@@ -80,6 +113,31 @@ const EnrichmentSchema = new Schema<EventEnrichment>(
             status: { type: String, enum: ['open', 'closed', 'not_yet', 'unknown'], required: true },
             deadline: { type: String },
             evidence: { type: String, maxlength: 280 },
+            deadlines: {
+                type: [
+                    new Schema<AppDeadline>(
+                        {
+                            kind: { type: String, enum: ['priority', 'regular', 'international', 'travel'], required: true },
+                            date: { type: String, required: true },
+                            time: { type: String },
+                            tz: { type: String },
+                            audience: { type: String, enum: ['all', 'domestic', 'international', 'restricted'], required: true },
+                            audienceNote: { type: String },
+                            source: { type: String, enum: ['site', 'curated', 'platform'], required: true },
+                            evidence: { type: String, maxlength: 280 },
+                            extendedFrom: { type: String },
+                        },
+                        { _id: false },
+                    ),
+                ],
+                default: undefined,
+            },
+            rolling: { type: Boolean },
+            waitlist: { type: Boolean },
+            openSeenAt: { type: String },
+            closedSeenAt: { type: String },
+            portal: { type: String },
+            checkedAt: { type: String },
         },
         travel: {
             status: { type: String, enum: ['yes', 'no', 'unknown'], required: true },

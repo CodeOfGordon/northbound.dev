@@ -6,7 +6,7 @@ import { Building2, MapPin } from 'lucide-react';
 import EventImage from '@/components/EventImage';
 import { LANE_ACCENT, LANE_LABELS, laneOf } from '@/lib/constants';
 import { eventFlag, formatCityLabel, formatDateRange, formatPrice, formatTime, monthDay, siteLogo } from '@/lib/format';
-import { applicationSignal } from '@/lib/hackathon';
+import { KIND_LABEL, applicationBadge, stateOf } from '@/lib/hackathon';
 import { cn } from '@/lib/utils';
 import type { EventDoc } from '@/lib/events';
 
@@ -34,10 +34,21 @@ const EventRow = ({ event, showDate = false }: Props) => {
     const priceInfo = formatPrice(isFree, price);
     const place = formatCityLabel(event);
     // Hackathons: the application state is the signal that matters (they're all
-    // free) — when known it takes the badge slot instead of "Free".
-    const appSignal = applicationSignal(event);
-    const showApp = lane === 'hackathon' && appSignal.status !== 'unknown';
-    const applyBy = appSignal.status !== 'closed' ? appSignal.deadline : undefined;
+    // free) — when known it takes the badge slot instead of "Free". Resolved
+    // per viewer at read time: `actBy` is THEIR tier (priority when they'd
+    // travel in from another country). ADR-029.
+    const app = stateOf(event);
+    const badge = lane === 'hackathon' ? applicationBadge(app) : null;
+    const actBy = app.status !== 'closed' ? app.actBy : undefined;
+    const applyBy = actBy?.date;
+    const tierNote = actBy
+        ? actBy.kind !== 'regular'
+            ? KIND_LABEL[actBy.kind]
+            : app.upcoming.find((d) => d !== actBy && d.kind === 'priority')
+              ? `priority ${monthDay(app.upcoming.find((d) => d !== actBy && d.kind === 'priority')!.date)}`
+              : undefined
+        : undefined;
+    const urgent = app.status === 'closing_soon';
     // Column mode: hackathon rows always (stored times are placeholder 9:00s and
     // the horizon rail only pins the month); other rows join when they carry an
     // application deadline so the info is never hidden.
@@ -69,7 +80,7 @@ const EventRow = ({ event, showDate = false }: Props) => {
                     {/* Mobile: the columns are hidden, so dates collapse into the meta line. */}
                     <span className="font-martian-mono text-light-100 text-xs sm:hidden">
                         {columns
-                            ? `${formatDateRange(date, endDate)}${applyBy ? ` · apply by ${monthDay(applyBy)}` : ''}`
+                            ? `${formatDateRange(date, endDate)}${applyBy ? ` · apply by ${monthDay(applyBy)}${actBy && actBy.kind !== 'regular' ? ` (${KIND_LABEL[actBy.kind]})` : ''}` : ''}`
                             : `${formatDateRange(date, endDate)} · ${mode === 'online' ? 'Online' : formatTime(time)}`}
                     </span>
                     <span className="flex items-center gap-1.5">
@@ -93,18 +104,24 @@ const EventRow = ({ event, showDate = false }: Props) => {
                             {showTime && <span className="text-light-200 whitespace-nowrap">{formatTime(time)}</span>}
                         </span>
                     </span>
-                    <span className="flex w-20 shrink-0 flex-col gap-1 max-sm:hidden">
+                    <span className="flex w-24 shrink-0 flex-col gap-1 max-sm:hidden">
                         <span className="label text-[9px]">Apply by</span>
-                        <span className={cn('font-martian-mono text-xs', applyBy ? 'text-light-100' : 'text-light-200')}>
-                            {applyBy ? monthDay(applyBy) : '—'}
+                        <span className="font-martian-mono flex flex-col text-xs leading-snug">
+                            <span className={cn(applyBy ? 'text-light-100' : 'text-light-200', urgent && 'text-primary font-semibold')}>
+                                {applyBy ? monthDay(applyBy) : '—'}
+                            </span>
+                            {tierNote && <span className="text-light-200 whitespace-nowrap">{tierNote}</span>}
                         </span>
                     </span>
                 </>
             ) : (
                 applyBy && (
-                    <span className="flex w-20 shrink-0 flex-col gap-1 max-sm:hidden">
+                    <span className="flex w-24 shrink-0 flex-col gap-1 max-sm:hidden">
                         <span className="label text-[9px]">Apply by</span>
-                        <span className="font-martian-mono text-light-100 text-xs">{monthDay(applyBy)}</span>
+                        <span className={cn('font-martian-mono text-light-100 text-xs', urgent && 'text-primary font-semibold')}>
+                            {monthDay(applyBy)}
+                        </span>
+                        {tierNote && <span className="font-martian-mono text-light-200 text-xs">{tierNote}</span>}
                     </span>
                 )
             )}
@@ -114,14 +131,19 @@ const EventRow = ({ event, showDate = false }: Props) => {
                     <span className={cn('size-1.5 rounded-full', accent.dot)} />
                     <span className="max-sm:hidden">{LANE_LABELS[lane]}</span>
                 </span>
-                {showApp ? (
-                    appSignal.status === 'open' ? (
-                        <span className="text-primary text-xs font-semibold">Apps open</span>
-                    ) : (
-                        <span className="text-light-200 text-xs">
-                            {appSignal.status === 'closed' ? 'Apps closed' : 'Apps soon'}
+                {badge ? (
+                    <span className="flex flex-col items-end leading-tight">
+                        <span
+                            className={cn(
+                                'text-xs',
+                                badge.tone === 'muted' ? 'text-light-200' : 'text-primary font-semibold',
+                                badge.tone === 'strong' && 'font-bold',
+                            )}
+                        >
+                            {badge.text}
                         </span>
-                    )
+                        {badge.sub && <span className="text-light-200 text-[11px]">{badge.sub}</span>}
+                    </span>
                 ) : (
                     <>
                         {priceInfo.kind === 'free' && <span className="text-primary text-xs font-semibold">Free</span>}

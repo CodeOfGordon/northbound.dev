@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test": "node --import ./tests/register.mjs --test tests/*.test.ts tests/*.test.mjs"
   },
   "dependencies": {
     "add-to-calendar-button-react": "^2.14.0",

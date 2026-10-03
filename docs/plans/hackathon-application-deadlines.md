@@ -1,6 +1,8 @@
 # Plan: application-first hackathon tracking
 
-**Status:** Proposed, 2026-09-28. Becomes ADR-029 once gordon accepts it.
+**Status:** Implemented 2026-10-03 as ADR-029 (Phases 1–4; Phase 0's read-only prod query
+is still to run after deploy; Phase 5's on-read verify endpoint was not built). Open
+decisions in §6 took the recommended options.
 **Trigger:** gordon found out from Instagram that HackPrinceton hacker applications were closing
 *today* (the event is in November), and Northbound had just reported Cal Hacks applications as
 open after they had closed. Both are the product's core promise failing: *hear about a

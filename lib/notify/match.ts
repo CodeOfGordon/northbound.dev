@@ -21,11 +21,13 @@ export interface InterestRule {
     /** None-of keywords — veto within this rule only. */
     exclude?: string[];
     /**
-     * Skip events starting sooner than this many days out. For hackathons the
-     * point of the digest is planning ahead — a hackathon starting next week
-     * has closed applications; hearing about it is noise.
+     * Only events whose applications are still open (or not yet open) for this
+     * subscriber. Replaced the old event-start lead-time filter (`minDaysOut`):
+     * how far away a hackathon is says nothing about whether you can still
+     * apply — HackPrinceton (Nov) closed applications in September, and the
+     * lead-time gate also hid deadline reminders. (ADR-029)
      */
-    minDaysOut?: number;
+    requireApplicable?: boolean;
     /**
      * Require a known travel-reimbursement policy (enrichment-derived). Only
      * meaningful for in-person events; online events never match it.
@@ -46,13 +48,13 @@ export interface EventLike {
     enrichment?: { travel?: { status?: string } };
 }
 
-function addDays(ymd: string, n: number): string {
-    const [y, m, d] = ymd.split('-').map(Number);
-    return new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10);
+export interface MatchContext {
+    /** Resolved for this subscriber at compose time (lib/hackathon.ts applicationState). */
+    applicationsClosed?: boolean;
 }
 
 /** Labels of every rule the event matches — [] means "not interesting". */
-export function matchEvent(event: EventLike, rules: InterestRule[], today: string): string[] {
+export function matchEvent(event: EventLike, rules: InterestRule[], ctx: MatchContext = {}): string[] {
     const haystack = `${event.title} ${event.description}`.toLowerCase();
     const tags = event.tags.map((t) => t.toLowerCase());
 
@@ -66,7 +68,7 @@ export function matchEvent(event: EventLike, rules: InterestRule[], today: strin
             if (rule.tags && !rule.tags.some((t) => tags.includes(t.toLowerCase()))) return false;
             if (rule.keywords && !rule.keywords.some((k) => haystack.includes(k.toLowerCase()))) return false;
             if (rule.exclude?.some((k) => haystack.includes(k.toLowerCase()))) return false;
-            if (rule.minDaysOut && event.date < addDays(today, rule.minDaysOut)) return false;
+            if (rule.requireApplicable && ctx.applicationsClosed) return false;
             // Unknown travel policy is not a match — we only promise what we verified.
             if (rule.travel === 'yes' && event.enrichment?.travel?.status !== 'yes') return false;
             return true;
@@ -80,7 +82,6 @@ export interface SubscriberPrefs {
     topics: string[];
     regions: string[];
     usTravelOnly: boolean;
-    minDaysOut: number;
 }
 
 const REGION_LABEL: Record<string, string> = { CA: 'Canada', US: 'United States', ONLINE: 'Online' };
@@ -106,7 +107,7 @@ export function rulesForSubscriber(prefs: SubscriberPrefs): InterestRule[] {
                     label: travelScoped ? `Hackathons · ${where} (travel covered)` : `Hackathons · ${where}`,
                     category: 'hackathon',
                     region,
-                    minDaysOut: prefs.minDaysOut,
+                    requireApplicable: true,
                     ...(travelScoped ? { travel: 'yes' as const } : {}),
                 });
             } else if (topic === 'company') {

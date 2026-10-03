@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import connectDB from '@/database/mongodb';
-import { runDigest } from '@/lib/notify/digest';
+import { runDigest, type DigestConfirmation } from '@/lib/notify/digest';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic'; // never cache a mutation endpoint
@@ -12,7 +12,7 @@ export const maxDuration = 60;          // a few queries + rendering
  * Vercel blocks outbound SMTP).
  *
  *   { mode:'compose', force? }  → one rendered message per active subscriber
- *   { mode:'confirm', cursor, results:[{subscriberId, openIds}] } → record sends
+ *   { mode:'confirm', cursor, results:[{subscriberId, kind, openIds, deadlineKeys, riskIds}] } → record sends
  *
  * Same auth contract as /api/refresh.
  */
@@ -26,16 +26,19 @@ export async function POST(request: NextRequest) {
 
     const body = await request.json().catch(() => ({}));
 
-    const results = Array.isArray(body?.results)
+    const strings = (v: unknown, max = 500) =>
+        Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string').map((x) => x.slice(0, 200)).slice(0, max) : [];
+    const results: DigestConfirmation[] | undefined = Array.isArray(body?.results)
         ? body.results
-              .filter((r: unknown): r is { subscriberId: string; openIds?: string[] } =>
+              .filter((r: unknown): r is Record<string, unknown> =>
                   !!r && typeof (r as { subscriberId?: unknown }).subscriberId === 'string')
               .slice(0, 200)
-              .map((r: { subscriberId: string; openIds?: unknown; messageId?: unknown }) => ({
-                  subscriberId: r.subscriberId,
-                  openIds: Array.isArray(r.openIds)
-                      ? r.openIds.filter((id): id is string => typeof id === 'string').slice(0, 500)
-                      : [],
+              .map((r: Record<string, unknown>) => ({
+                  subscriberId: r.subscriberId as string,
+                  kind: r.kind === 'urgent' ? 'urgent' : 'digest',
+                  openIds: strings(r.openIds),
+                  deadlineKeys: strings(r.deadlineKeys),
+                  riskIds: strings(r.riskIds),
                   messageId: typeof r.messageId === 'string' ? r.messageId.slice(0, 400) : undefined,
               }))
         : undefined;

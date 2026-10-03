@@ -19,8 +19,17 @@ export interface ISubscriber extends Document {
     regions: ('CA' | 'US' | 'ONLINE')[];
     /** US in-person hackathons only when travel reimbursement is known-offered. */
     usTravelOnly: boolean;
-    /** Skip anything starting sooner than this — hackathon applications close early. */
-    minDaysOut: number;
+    /**
+     * Where they apply from — decides which deadline tier is theirs (an
+     * applicant travelling in should hit the priority round). ADR-029; this
+     * replaced the old event-start lead-time filter (`minDaysOut`), which hid
+     * deadline reminders for events starting "too soon".
+     */
+    homeCountry: 'CA' | 'US' | 'OTHER';
+    /** Would need travel reimbursement — travel-funding deadlines apply to them. */
+    wantsTravel: boolean;
+    /** Email about deadlines in the next 72 h even when the regular digest isn't due. */
+    urgentDeadlines: boolean;
     /** How often a digest may go out. Weekly by default: hackathon news moves in weeks. */
     frequency: 'daily' | 'weekly' | 'biweekly' | 'monthly';
     /** Considered-through cursor for "new since last digest". */
@@ -29,6 +38,15 @@ export interface ISubscriber extends Document {
     lastSentAt?: Date;
     /** Event ids already announced as "applications open" to THIS subscriber. */
     notifiedOpenIds: string[];
+    /**
+     * Deadline reminders already delivered: `<eventId>:<kind>:<date>:<early|final>`.
+     * `final` = sent inside the last 72 h, which the urgent path guarantees once.
+     */
+    notifiedDeadlineKeys: string[];
+    /** Events already flagged to them as "deadline not published". */
+    notifiedRiskIds: string[];
+    /** Last urgent (deadline-only) send — at most one per day. */
+    lastUrgentAt?: Date;
     /**
      * Message-ID of their last digest. The next one is sent as a reply to it,
      * so every digest lands in ONE Gmail conversation — rescuing that thread
@@ -72,11 +90,16 @@ const SubscriberSchema = new Schema<ISubscriber>(
             validate: { validator: (v: string[]) => v.length > 0, message: 'Pick at least one region' },
         },
         usTravelOnly: { type: Boolean, default: false },
-        minDaysOut: { type: Number, default: 21, min: 0, max: 180 },
+        homeCountry: { type: String, enum: ['CA', 'US', 'OTHER'], default: 'CA' },
+        wantsTravel: { type: Boolean, default: false },
+        urgentDeadlines: { type: Boolean, default: true },
         frequency: { type: String, enum: ['daily', 'weekly', 'biweekly', 'monthly'], default: 'weekly' },
         lastDigestAt: { type: Date },
         lastSentAt: { type: Date },
         notifiedOpenIds: { type: [String], default: [] },
+        notifiedDeadlineKeys: { type: [String], default: [] },
+        notifiedRiskIds: { type: [String], default: [] },
+        lastUrgentAt: { type: Date },
         lastMessageId: { type: String },
         unsubscribedAt: { type: Date },
     },

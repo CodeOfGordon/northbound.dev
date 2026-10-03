@@ -40,6 +40,11 @@ export const WATCHLIST: WatchlistEntry[] = [
     { name: 'HackMIT', host: 'hackmit.org', city: 'Cambridge', country: 'United States', school: 'MIT', knownNext: { start: '2026-09-19', end: '2026-09-20' } },
     { name: 'HooHacks', host: 'hoohacks.io', city: 'Charlottesville', country: 'United States', school: 'University of Virginia' },
     { name: 'YHack', host: 'yhack.org', city: 'New Haven', country: 'United States', school: 'Yale University' },
-    { name: 'TreeHacks', host: 'treehacks.com', city: 'Stanford', country: 'United States', school: 'Stanford University' },
+    // TreeHacks 2027 per its site/announcements (2026-09); applications Nov 1 (priority Oct 19 is Stanford-only).
+    { name: 'TreeHacks', host: 'treehacks.com', city: 'Stanford', country: 'United States', school: 'Stanford University', knownNext: { start: '2027-02-12', end: '2027-02-14' } },
+    // Not in MLH's 2027 roster as of 2026-09, and its Fall 2026 deadline (Sep 28) was announced
+    // mainly on social media — the miss that prompted ADR-029. Re-check for an MLH duplicate
+    // (title drift defeats fingerprint dedup) if MLH later lists it.
+    { name: 'HackPrinceton', host: 'hackprinceton.com', city: 'Princeton', country: 'United States', school: 'Princeton University', knownNext: { start: '2026-11-13', end: '2026-11-15' } },
     { name: 'McHacks', host: 'mchacks.ca', city: 'Montreal', country: 'Canada', school: 'McGill University' },
 ];

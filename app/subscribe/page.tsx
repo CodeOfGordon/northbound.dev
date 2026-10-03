@@ -14,8 +14,8 @@ export const metadata: Metadata = {
 type SearchParams = Promise<Record<string, string | string[] | undefined>>;
 
 const PITCH = [
-    { icon: BellRing, title: 'Applications, not just dates', body: 'Told when a hackathon opens applications — while you can still apply, not the week it starts.' },
-    { icon: CalendarClock, title: 'Deadline reminders', body: 'A nudge 7, 3 and 1 days before an application deadline you care about.' },
+    { icon: BellRing, title: 'Applications, not just dates', body: 'Told the day we see a hackathon’s applications open, however far away the event is.' },
+    { icon: CalendarClock, title: 'Deadline reminders', body: 'Priority and regular deadlines reminded separately — the one that applies to where you’re applying from — with a final alert inside 72 hours.' },
     { icon: Plane, title: 'Travel-covered filter', body: 'For US hackathons, optionally only the ones confirmed to reimburse travel.' },
 ];
 
@@ -36,7 +36,7 @@ const SubscribePage = async ({ searchParams }: { searchParams: SearchParams }) =
                             {existing.status === 'unsubscribed' && ' Saving will resubscribe this address.'}
                         </>
                     ) : (
-                        'One email a day at most — only when something you care about turns up. No email on quiet days.'
+                        'On your schedule — weekly by default — plus a deadline alert when something you care about closes within 3 days. No email on quiet days.'
                     )}
                 </p>
             </div>

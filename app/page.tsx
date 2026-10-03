@@ -7,7 +7,9 @@ import SectionRail from '@/components/SectionRail';
 import SectionHeader from '@/components/SectionHeader';
 import EmptyState from '@/components/EmptyState';
 import FreshnessBadge from '@/components/FreshnessBadge';
-import { getHomeSections, queryEvents } from '@/lib/events';
+import EventRow from '@/components/EventRow';
+import { closingSoonHackathons, getHomeSections, queryEvents } from '@/lib/events';
+import { getApplicant } from '@/lib/applicant';
 import { getScrapeStatus } from '@/lib/meta';
 
 export const dynamic = 'force-dynamic'; // live DB reads — never prerender at build
@@ -18,10 +20,12 @@ export const dynamic = 'force-dynamic'; // live DB reads — never prerender at 
  * United States and online events as secondary sections. North-America scoped.
  */
 const Page = async () => {
-    const [sections, all, status] = await Promise.all([
-        getHomeSections(),
+    const applicant = await getApplicant();
+    const [sections, all, status, closingSoon] = await Promise.all([
+        getHomeSections(applicant),
         queryEvents({ limit: 1 }),
         getScrapeStatus(),
+        closingSoonHackathons(applicant, 5),
     ]);
     const empty =
         !sections.company.length &&
@@ -120,6 +124,19 @@ const Page = async () => {
                             accent="primary"
                             href="/events?category=hackathon"
                         />
+                        {/* Deadlines first (ADR-029): what closes this week, for this viewer. */}
+                        {closingSoon.length > 0 && (
+                            <div className="flex flex-col gap-2.5" aria-label="Hackathon applications closing this week">
+                                <p className="label text-primary">Applications closing this week</p>
+                                <ul className="flex list-none flex-col gap-2.5">
+                                    {closingSoon.map((event) => (
+                                        <li key={event.slug}>
+                                            <EventRow event={event} showDate />
+                                        </li>
+                                    ))}
+                                </ul>
+                            </div>
+                        )}
                         <Carousel
                             events={sections.hackathons}
                             viewAllHref="/events?category=hackathon"

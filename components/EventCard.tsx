@@ -6,7 +6,7 @@ import { Building2, MapPin } from 'lucide-react';
 import EventImage from '@/components/EventImage';
 import { HIDDEN_TAGS, LANE_ACCENT, LANE_LABELS, laneOf } from '@/lib/constants';
 import { dateBadge, eventFlag, formatCityLabel, formatDateRange, formatPrice, formatTime, monthDay, siteLogo } from '@/lib/format';
-import { applicationSignal, travelSignal } from '@/lib/hackathon';
+import { KIND_LABEL, applicationBadge, stateOf, travelSignal } from '@/lib/hackathon';
 import { cn } from '@/lib/utils';
 import type { EventDoc } from '@/lib/events';
 
@@ -28,8 +28,9 @@ const EventCard = ({ event }: Props) => {
     const badge = dateBadge(date);
     // Hackathons: application state replaces the (uninformative — all free)
     // "Free" badge; a known travel-aid policy earns a chip.
-    const appSignal = applicationSignal(event);
-    const showApp = lane === 'hackathon' && appSignal.status !== 'unknown';
+    const app = stateOf(event); // resolved per viewer at read time (ADR-029)
+    const appBadge = lane === 'hackathon' ? applicationBadge(app) : null;
+    const showApp = !!appBadge;
     const travel = travelSignal(event);
     const visibleTags = event.tags.filter((t) => !HIDDEN_TAGS.includes(t)).slice(0, 2);
 
@@ -64,10 +65,10 @@ const EventCard = ({ event }: Props) => {
                     {(() => {
                         // Hackathons are date-scoped (times are placeholder 9:00s); any
                         // lane may carry an application deadline worth surfacing.
-                        const applyBy =
-                            appSignal.deadline && appSignal.status !== 'closed'
-                                ? ` · apply by ${monthDay(appSignal.deadline)}`
-                                : '';
+                        const actBy = app.status !== 'closed' ? app.actBy : undefined;
+                        const applyBy = actBy
+                            ? ` · apply by ${monthDay(actBy.date)}${actBy.kind !== 'regular' ? ` (${KIND_LABEL[actBy.kind]})` : ''}`
+                            : '';
                         return (
                             <span className="font-martian-mono text-light-100 text-xs">
                                 {lane === 'hackathon'
@@ -98,14 +99,18 @@ const EventCard = ({ event }: Props) => {
                                 {travel.basis === 'prior-edition' ? 'Travel aid (past yrs)' : 'Travel aid'}
                             </span>
                         )}
-                        {showApp ? (
-                            appSignal.status === 'open' ? (
-                                <span className="text-primary ml-auto text-xs font-semibold">Apps open</span>
-                            ) : (
-                                <span className="text-light-200 ml-auto text-xs">
-                                    {appSignal.status === 'closed' ? 'Apps closed' : 'Apps soon'}
-                                </span>
-                            )
+                        {appBadge ? (
+                            <span
+                                className={cn(
+                                    'ml-auto text-xs',
+                                    appBadge.tone === 'muted' ? 'text-light-200' : 'text-primary font-semibold',
+                                    appBadge.tone === 'strong' && 'font-bold',
+                                )}
+                                title={appBadge.sub ? `${appBadge.text} ${appBadge.sub}` : undefined}
+                            >
+                                {appBadge.text}
+                                {appBadge.sub && <span className="text-light-200 font-normal"> {appBadge.sub}</span>}
+                            </span>
                         ) : (
                             <>
                                 {priceInfo.kind === 'free' && <span className="text-primary ml-auto text-xs font-semibold">Free</span>}

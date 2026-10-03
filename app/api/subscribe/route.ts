@@ -8,6 +8,7 @@ export const dynamic = 'force-dynamic';
 const TOPICS = ['hackathon', 'company', 'community'];
 const REGIONS = ['CA', 'US', 'ONLINE'];
 const FREQUENCIES = ['daily', 'weekly', 'biweekly', 'monthly'];
+const COUNTRIES = ['CA', 'US', 'OTHER'];
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 function pick(value: unknown, allowed: string[]): string[] {
@@ -32,8 +33,11 @@ export async function POST(request: NextRequest) {
 
     const usTravelOnly = body?.usTravelOnly === true;
     const frequency = FREQUENCIES.includes(body?.frequency) ? body.frequency : 'weekly';
-    const minDaysOutRaw = Number(body?.minDaysOut);
-    const minDaysOut = Number.isFinite(minDaysOutRaw) ? Math.min(Math.max(Math.round(minDaysOutRaw), 0), 180) : 21;
+    // Where they apply from decides which deadline tier is theirs (ADR-029).
+    const homeCountry = COUNTRIES.includes(body?.homeCountry) ? body.homeCountry : 'CA';
+    const wantsTravel = body?.wantsTravel === true;
+    const urgentDeadlines = body?.urgentDeadlines !== false;
+    const prefs = { topics, regions, usTravelOnly, homeCountry, wantsTravel, urgentDeadlines, frequency, status: 'active' };
 
     await connectDB();
 
@@ -42,7 +46,7 @@ export async function POST(request: NextRequest) {
     if (token) {
         const updated = await Subscriber.findOneAndUpdate(
             { token },
-            { $set: { topics, regions, usTravelOnly, minDaysOut, frequency, status: 'active' }, $unset: { unsubscribedAt: '' } },
+            { $set: prefs, $unset: { unsubscribedAt: '' } },
             { new: true },
         ).lean<{ email: string } | null>();
         if (!updated) return NextResponse.json({ error: 'That link is no longer valid.' }, { status: 404 });
@@ -59,9 +63,9 @@ export async function POST(request: NextRequest) {
     await Subscriber.updateOne(
         { email },
         {
-            $set: { topics, regions, usTravelOnly, minDaysOut, frequency, status: 'active' },
+            $set: prefs,
             $unset: { unsubscribedAt: '' },
-            $setOnInsert: { email, token: newSubscriberToken(), notifiedOpenIds: [] },
+            $setOnInsert: { email, token: newSubscriberToken(), notifiedOpenIds: [], notifiedDeadlineKeys: [], notifiedRiskIds: [] },
         },
         { upsert: true },
     );

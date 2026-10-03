@@ -2,6 +2,8 @@ import { NextResponse, type NextRequest } from 'next/server';
 import type { QueryFilter } from 'mongoose';
 import connectDB from '@/database/mongodb';
 import { Event, type IEvent } from '@/database';
+import { toEventDoc } from '@/lib/events';
+import { isApplicable } from '@/lib/hackathon';
 
 export const runtime = 'nodejs';        // Mongoose can't run on Edge
 export const dynamic = 'force-dynamic'; // feed must never be stale
@@ -72,11 +74,11 @@ export async function GET(request: NextRequest) {
 
     const q = sp.get('q')?.trim();
 
-    // Application/travel signals (parity with lib/events.ts semantics).
-    if (sp.get('applications') === 'open') {
-        if (q) filter.applicationStatus = 'open'; // $text forbids $or
-        else filter.$or = [{ applicationStatus: 'open' }, { 'enrichment.application.status': 'open' }];
-    }
+    // Application/travel signals (parity with lib/events.ts semantics): "open"
+    // is resolved at read time by lib/hackathon.ts — deadlines vs now, stale
+    // observations, the Devpost in-person rule — so it's a post-filter, not a
+    // Mongo predicate. Resolved for the default applicant (API has no viewer).
+    const appsOpen = sp.get('applications') === 'open';
     const travel = sp.get('travel');
     if (travel === 'yes' || travel === 'no') filter['enrichment.travel.status'] = travel;
 
@@ -90,6 +92,20 @@ export async function GET(request: NextRequest) {
     const sort: Record<string, 1 | -1 | { $meta: 'textScore' }> = q
         ? { score: { $meta: 'textScore' } } // relevance for keyword search
         : { date: 1, _id: 1 };              // chronological, deterministic
+
+    if (appsOpen) {
+        const candidates = await Event.find(filter, q ? { ...EXCLUDE, score: { $meta: 'textScore' } } : EXCLUDE)
+            .sort(sort)
+            .limit(500)
+            .lean();
+        const now = new Date();
+        const open = candidates.filter((d) => {
+            const app = toEventDoc(d, undefined, now).app;
+            return !!app && isApplicable(app);
+        });
+        const pageItems = open.slice(skip, skip + limit);
+        return NextResponse.json({ items: pageItems, page, limit, total: open.length, hasMore: skip + pageItems.length < open.length });
+    }
 
     const [items, total] = await Promise.all([
         // $meta is additive, so it composes with the exclusion projection.

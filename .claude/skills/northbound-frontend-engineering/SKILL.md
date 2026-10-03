@@ -79,15 +79,24 @@ and `[object Object]`-class bugs; the shared helpers absorb that:
 `/_not-found`, commit `2b8c7b9`). `FreshnessBadge` dims its pulsing mint dot to amber when
 `lastRunAt` is >2 days old; `variant="bare"` on the hero, default `pill` in `Footer.tsx`.
 
-**Hackathon signal helpers (`lib/hackathon.ts`, ADR-018):** `applicationSignal(event)` and
-`travelSignal(event)` are the **only merge point** components use for the two hackathon
-data sources — the scrape-owned `applicationStatus`/`applicationDeadline` fields and the
-enrichment-script-owned `enrichment` subdoc. Never read `event.enrichment` or
-`event.applicationStatus` directly in a component; call these instead so both fields
-resolve through one place. Used by `EventCard.tsx`, `EventRow.tsx` (application only), and
-the detail page (`app/events/[slug]/page.tsx`) for the "Apps open/closed/soon" and
-"Travel aid" badges — both reuse the existing `.chip` / Free-badge treatment, no new
-tokens.
+**Hackathon signal helpers (`lib/hackathon.ts`, ADR-018 → ADR-029):** `applicationState(event,
+applicant, now)` and `travelSignal(event)` are the **only merge point** for hackathon data.
+`applicationState` merges the scrape-owned `applicationStatus`/`applicationDeadline`, the
+enrichment subdoc (deadline tiers, open/closed observations) and curated tiers. It resolves
+**per viewer at read time**: `lib/events.ts` attaches it as `doc.app` for the applicant that
+`lib/applicant.ts` reads from the `nb_applicant` cookie (default from `x-vercel-ip-country`,
+else CA). Components call `stateOf(event)` (falls back to the default applicant),
+`applicationBadge()`, `deadlinePhrase()`, `dueLabel()` and `staleNote()`. Never read
+`event.enrichment` or `event.applicationStatus` directly in a component.
+- Consumers: `EventCard.tsx`, `EventRow.tsx` (act-by date + tier in the "Apply by" column),
+  `HackathonPlanner.tsx` (the hackathon lane's default deadline-bucket view, via
+  `hackathonPlanner()`), the home "Applications closing this week" strip
+  (`closingSoonHackathons()`), and `ApplicationPanel.tsx` on the detail page (tier table,
+  provenance, `AddDeadlineToCalendar`).
+- `ApplicantToggle.tsx` writes the cookie and `router.refresh()`es.
+- Urgency is mint weight only — amber stays company-only.
+- **Dev testing:** browse `localhost`, not `127.0.0.1` — Next 16 blocks dev resources
+  cross-origin and the page never hydrates.
 
 ## The /events URL filter-state contract
 
@@ -117,15 +126,19 @@ with `{date <= to}` if `to` set), and sorting runs through an aggregation comput
 stale start date. `EventTimeline`'s internal `group()` mirrors this client-side by clamping
 `ev.date < today` into the current bucket.
 
-**Hackathon lane defaults + `EventTimeline` granularity** (ADR-018, 2026-08-16): the
-hackathon lane (`/events?category=hackathon`, no explicit `from`/`to`) now defaults to a
-**6-month forward horizon**, `includeOngoing` forced **off** there specifically (dozens of
-already-started online challenges were clamping into "today" and burying the planning
-view — see `app/events/page.tsx` comment at `horizonDefault`). `EventTimeline` gained a
-`granularity?: 'day' | 'month'` prop (default `'day'`); the hackathon lane passes
-`'month'` so 180 one-row day groups collapse into month buckets. New date presets
-`quarter` (+92d) and `half` (+183d) in `DATE_PRESETS` (`lib/constants.ts`) back the "Next 3
-months"/"Next 6 months" picker options.
+**Hackathon lane defaults** (ADR-029, 2026-10-03; supersedes ADR-018's 6-month horizon):
+`/events?category=hackathon` with no explicit `from`/`to`/`q` renders the **application
+planner**. `hackathonPlanner()` in `lib/events.ts` → `HackathonPlanner.tsx` groups every
+upcoming hackathon (up to a year out, already-started ones excluded) by when THIS viewer
+has to apply:
+- Closes this week / Closes this month / Later, sorted by act-by instant;
+- No deadline published;
+- Not open yet;
+- Applications closed, folded in `<details>`.
+
+An explicit date preset or a search falls back to `EventTimeline` with
+`granularity="month"`. The `quarter` (+92d) and `half` (+183d) presets in `DATE_PRESETS`
+(`lib/constants.ts`) still back "Next 3/6 months".
 
 **Push semantics** (client components; both `'use client'` + `useRouter`):
 

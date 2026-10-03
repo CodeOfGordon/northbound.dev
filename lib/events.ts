@@ -8,6 +8,13 @@ import 'server-only';
 import type { QueryFilter } from 'mongoose';
 import connectDB from '@/database/mongodb';
 import { Event, type EventEnrichment, type IEvent } from '@/database';
+import {
+    DEFAULT_APPLICANT,
+    applicationState,
+    isApplicable,
+    type Applicant,
+    type ApplicationState,
+} from '@/lib/hackathon';
 
 export type { EventEnrichment };
 
@@ -38,6 +45,10 @@ export interface EventDoc {
     applicationStatus?: 'open' | 'closed' | 'not_yet' | 'unknown';
     applicationDeadline?: string;
     enrichment?: EventEnrichment;
+    /** ISO — dates the scrape-owned application status (it refreshes nightly). */
+    updatedAt?: string;
+    /** Application state resolved at read time for the requesting viewer (ADR-029). */
+    app?: ApplicationState;
 }
 
 export interface EventQuery {
@@ -56,8 +67,10 @@ export interface EventQuery {
     from?: string;
     to?: string;
     tag?: string;
-    /** 'open' — only events whose applications are currently open (hackathon lane filter). */
+    /** 'open' — only events whose applications are open for this viewer right now. */
     applications?: string;
+    /** The viewer — application state on every returned doc is resolved for them. */
+    applicant?: Applicant;
     /** 'yes' | 'no' — travel-reimbursement signal from the enrichment pass. */
     travel?: string;
     page?: number;
@@ -105,8 +118,13 @@ export async function distinctCities(region?: string): Promise<string[]> {
 }
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
-function toDoc(d: any): EventDoc {
-    return {
+/** Lean Mongo doc → serializable EventDoc with application state resolved for `who` at `now`. */
+export function toEventDoc(d: any, who?: Applicant, now?: Date): EventDoc {
+    return toDoc(d, who, now);
+}
+
+function toDoc(d: any, who?: Applicant, now?: Date): EventDoc {
+    const doc: EventDoc = {
         title: d.title, slug: d.slug, description: d.description, overview: d.overview,
         image: d.image, venue: d.venue, country: d.country, city: d.city,
         date: d.date, time: d.time, endDate: d.endDate, endTime: d.endTime,
@@ -116,7 +134,11 @@ function toDoc(d: any): EventDoc {
         isFree: d.isFree, price: d.price, category: d.category, region: d.region,
         applicationStatus: d.applicationStatus, applicationDeadline: d.applicationDeadline,
         enrichment: d.enrichment,
+        updatedAt: d.updatedAt ? new Date(d.updatedAt).toISOString() : undefined,
     };
+    // Resolved per request (P2): status, the viewer's act-by tier, staleness.
+    doc.app = applicationState(doc, who ?? DEFAULT_APPLICANT, now ?? new Date());
+    return doc;
 }
 
 export interface EventPage {
@@ -127,9 +149,15 @@ export interface EventPage {
     hasMore: boolean;
 }
 
-export async function queryEvents(params: EventQuery = {}): Promise<EventPage> {
-    await connectDB();
+interface BuiltQuery {
+    filter: QueryFilter<IEvent>;
+    from: string;
+    q?: string;
+    includeOngoing: boolean;
+}
 
+/** Mongo filter for the feed's URL filter contract (shared by the feed and the planner). */
+function buildQuery(params: EventQuery): BuiltQuery {
     const filter: QueryFilter<IEvent> = {};
 
     if (params.mode && MODES.includes(params.mode)) filter.mode = params.mode;
@@ -170,35 +198,21 @@ export async function queryEvents(params: EventQuery = {}): Promise<EventPage> {
     // not date-grouped, so dropping still-running past-start events is acceptable).
     const includeOngoing = !q && (params.includeOngoing ?? params.category === 'hackathon');
 
-    // Extra AND-composed clauses (each may carry its own $or, so they can't sit
-    // directly on the filter next to the ongoing $or).
-    const and: QueryFilter<IEvent>[] = [];
-    if (params.applications === 'open') {
-        // Open per the scrape field OR the enrichment scan…
-        if (q) filter.applicationStatus = 'open'; // $text forbids $or — scrape field only
-        else and.push({ $or: [{ applicationStatus: 'open' }, { 'enrichment.application.status': 'open' }] });
-        // …and the deadline (either owner's) must not have passed. $not passes
-        // docs where the field is absent, which is what we want.
-        filter.applicationDeadline = { $not: { $lt: from } };
-        filter['enrichment.application.deadline'] = { $not: { $lt: from } };
-    }
-
     if (includeOngoing) {
         const notEnded = [{ date: { $gte: from } }, { endDate: { $gte: from } }];
-        if (params.to) and.push({ date: { $lte: params.to } }, { $or: notEnded });
-        else and.push({ $or: notEnded });
+        if (params.to) filter.$and = [{ date: { $lte: params.to } }, { $or: notEnded }];
+        else filter.$or = notEnded;
     } else {
         filter.date = { $gte: from, ...(params.to ? { $lte: params.to } : {}) };
     }
-    if (and.length === 1 && !and[0].$or) Object.assign(filter, and[0]);
-    else if (and.length) filter.$and = and;
 
     if (q) filter.$text = { $search: q };
+    return { filter, from, q, includeOngoing };
+}
 
-    const limit = Math.min(Math.max(params.limit ?? 18, 1), 60);
-    const page = Math.max(params.page ?? 1, 1);
-    const skip = (page - 1) * limit;
-
+/** Raw page of docs for a built query, in the feed's sort order. */
+async function runQuery(built: BuiltQuery, skip: number, limit: number): Promise<{ items: any[]; total: number }> {
+    const { filter, from, q, includeOngoing } = built;
     // Search: relevance order via text score. Ongoing feeds: effective-date order so a
     // still-running event (past start) sorts as "today", not at the top with a stale
     // date. Plain feeds: straight date order via find().
@@ -208,9 +222,8 @@ export async function queryEvents(params: EventQuery = {}): Promise<EventPage> {
                 .sort({ score: { $meta: 'textScore' } }).skip(skip).limit(limit).lean(),
             Event.countDocuments(filter),
         ]);
-        return { items: items.map(toDoc), page, limit, total, hasMore: skip + items.length < total };
+        return { items, total };
     }
-
     if (includeOngoing) {
         const [items, total] = await Promise.all([
             Event.aggregate([
@@ -222,27 +235,132 @@ export async function queryEvents(params: EventQuery = {}): Promise<EventPage> {
             ]),
             Event.countDocuments(filter),
         ]);
-        return { items: items.map(toDoc), page, limit, total, hasMore: skip + items.length < total };
+        return { items, total };
     }
-
     const [items, total] = await Promise.all([
         Event.find(filter).sort({ date: 1, _id: 1 }).skip(skip).limit(limit).lean(),
         Event.countDocuments(filter),
     ]);
-
-    return { items: items.map(toDoc), page, limit, total, hasMore: skip + items.length < total };
+    return { items, total };
 }
 
-export async function getEventBySlug(slug: string): Promise<EventDoc | null> {
+/**
+ * Candidate cap for filters resolved in memory. The application-state filter
+ * can't be a Mongo predicate (it depends on the viewer and on `now`), and the
+ * candidate sets are tens to low hundreds of docs.
+ */
+const RESOLVE_CAP = 500;
+
+export async function queryEvents(params: EventQuery = {}): Promise<EventPage> {
+    await connectDB();
+
+    const built = buildQuery(params);
+    const who = params.applicant ?? DEFAULT_APPLICANT;
+    const now = new Date();
+    const limit = Math.min(Math.max(params.limit ?? 18, 1), 60);
+    const page = Math.max(params.page ?? 1, 1);
+    const skip = (page - 1) * limit;
+
+    if (params.applications === 'open') {
+        // "Open now" is resolved per viewer at read time (ADR-029): the same
+        // precedence the badge uses, so the filter and the badge always agree.
+        const { items } = await runQuery(built, 0, RESOLVE_CAP);
+        const open = items.map((d) => toDoc(d, who, now)).filter((d) => d.app && isApplicable(d.app));
+        const pageItems = open.slice(skip, skip + limit);
+        return { items: pageItems, page, limit, total: open.length, hasMore: skip + pageItems.length < open.length };
+    }
+
+    const { items, total } = await runQuery(built, skip, limit);
+    return { items: items.map((d) => toDoc(d, who, now)), page, limit, total, hasMore: skip + items.length < total };
+}
+
+/* ---- Hackathon planner (application-first lane, ADR-029) ----------------- */
+
+export type PlannerBucket = 'closing' | 'month' | 'later' | 'undated' | 'not_yet' | 'closed';
+
+export interface PlannerGroup {
+    key: PlannerBucket;
+    title: string;
+    hint: string;
+    events: EventDoc[];
+}
+
+export const PLANNER_BUCKETS: { key: PlannerBucket; title: string; hint: string }[] = [
+    { key: 'closing', title: 'Closes this week', hint: 'Apply now' },
+    { key: 'month', title: 'Closes this month', hint: 'Next 31 days' },
+    { key: 'later', title: 'Later', hint: 'Further out' },
+    { key: 'undated', title: 'No deadline published', hint: 'Check the site' },
+    { key: 'not_yet', title: 'Not open yet', hint: 'Watching' },
+    { key: 'closed', title: 'Applications closed', hint: 'Still upcoming' },
+];
+
+function bucketOf(e: EventDoc): PlannerBucket {
+    const s = e.app!;
+    if (s.status === 'closed') return 'closed';
+    if (s.status === 'not_yet') return 'not_yet';
+    if (!s.actBy) return 'undated';
+    if (s.status === 'closing_soon') return 'closing';
+    return s.actBy.daysLeft <= 31 ? 'month' : 'later';
+}
+
+/**
+ * The hackathon lane's default view: every upcoming hackathon grouped by when
+ * THIS viewer has to apply, not by when the event runs (P1). Events that
+ * haven't started yet, up to a year out; deadline buckets sort by the
+ * viewer's act-by instant, the rest by start date.
+ */
+export async function hackathonPlanner(params: EventQuery = {}): Promise<{ groups: PlannerGroup[]; total: number; open: number }> {
+    await connectDB();
+    const from = todayInToronto();
+    const built = buildQuery({
+        ...params,
+        category: 'hackathon',
+        from,
+        to: params.to ?? addDays(from, 365),
+        includeOngoing: false,
+        q: undefined,
+    });
+    const who = params.applicant ?? DEFAULT_APPLICANT;
+    const now = new Date();
+    const { items } = await runQuery(built, 0, RESOLVE_CAP);
+    let docs = items.map((d) => toDoc(d, who, now));
+    if (params.applications === 'open') docs = docs.filter((d) => isApplicable(d.app!));
+
+    const groups = PLANNER_BUCKETS.map((b) => ({ ...b, events: [] as EventDoc[] }));
+    for (const d of docs) groups.find((g) => g.key === bucketOf(d))!.events.push(d);
+    for (const g of groups) {
+        if (g.key === 'closing' || g.key === 'month' || g.key === 'later') {
+            g.events.sort((a, b) => a.app!.actBy!.closesAt.localeCompare(b.app!.actBy!.closesAt) || a.date.localeCompare(b.date));
+        }
+    }
+    return {
+        groups: groups.filter((g) => g.events.length),
+        total: docs.length,
+        open: docs.filter((d) => isApplicable(d.app!)).length,
+    };
+}
+
+/** Hackathons whose act-by deadline for this viewer falls within the next week (home strip). */
+export async function closingSoonHackathons(who: Applicant, limit = 5): Promise<EventDoc[]> {
+    const { groups } = await hackathonPlanner({ applicant: who });
+    return (groups.find((g) => g.key === 'closing')?.events ?? []).slice(0, limit);
+}
+
+function addDays(ymd: string, n: number): string {
+    const [y, m, d] = ymd.split('-').map(Number);
+    return new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10);
+}
+
+export async function getEventBySlug(slug: string, who?: Applicant): Promise<EventDoc | null> {
     await connectDB();
     // Slugs are stored lowercase (schema `lowercase: true`) — normalize the lookup
     // so mixed-case URLs resolve here the same way they do on /api/events/[slug].
     const doc = await Event.findOne({ slug: slug.toLowerCase() }).lean();
-    return doc ? toDoc(doc) : null;
+    return doc ? toDoc(doc, who) : null;
 }
 
 /** Same city or overlapping tags, upcoming, excluding the event itself. */
-export async function getRelatedEvents(event: EventDoc, limit = 3): Promise<EventDoc[]> {
+export async function getRelatedEvents(event: EventDoc, limit = 3, who?: Applicant): Promise<EventDoc[]> {
     await connectDB();
     const docs = await Event.find({
         slug: { $ne: event.slug },
@@ -252,7 +370,8 @@ export async function getRelatedEvents(event: EventDoc, limit = 3): Promise<Even
         .sort({ date: 1 })
         .limit(limit)
         .lean();
-    return docs.map(toDoc);
+    const now = new Date();
+    return docs.map((d) => toDoc(d, who, now));
 }
 
 export interface HomeSections {
@@ -286,7 +405,7 @@ export async function upcomingCompanies(): Promise<{ name: string; count: number
  * Microsoft's "Build //localhost" runs 19 near-identical city editions). Depth per
  * company is reachable via the organizer chips and "View all".
  */
-async function diverseCompanyEvents(limit: number): Promise<EventDoc[]> {
+async function diverseCompanyEvents(limit: number, who?: Applicant): Promise<EventDoc[]> {
     await connectDB();
     const rows = await Event.aggregate([
         { $match: { source: 'company', date: { $gte: todayInToronto() } } },
@@ -296,21 +415,22 @@ async function diverseCompanyEvents(limit: number): Promise<EventDoc[]> {
         { $sort: { date: 1, _id: 1 } },
         { $limit: limit },
     ]);
-    return rows.map(toDoc);
+    const now = new Date();
+    return rows.map((d) => toDoc(d, who, now));
 }
 
 const CANADA_CITIES = ['Toronto', 'Ottawa', 'Montreal'];
 
-export async function getHomeSections(): Promise<HomeSections> {
+export async function getHomeSections(who?: Applicant): Promise<HomeSections> {
     const [company, companies, hackathons, unitedStates, online, ...cities] = await Promise.all([
-        diverseCompanyEvents(12),
+        diverseCompanyEvents(12, who),
         upcomingCompanies(),
-        queryEvents({ category: 'hackathon', limit: 10 }),
-        queryEvents({ source: 'company', region: 'us', limit: 9 }),
-        queryEvents({ region: 'online', limit: 9 }),
+        queryEvents({ category: 'hackathon', limit: 10, applicant: who }),
+        queryEvents({ source: 'company', region: 'us', limit: 9, applicant: who }),
+        queryEvents({ region: 'online', limit: 9, applicant: who }),
         // Canadian city rails span all sources so local company events appear here too.
         // Pull a fuller set so the carousels don't look sparse (was 3).
-        ...CANADA_CITIES.map((city) => queryEvents({ city, limit: 9 })),
+        ...CANADA_CITIES.map((city) => queryEvents({ city, limit: 9, applicant: who })),
     ]);
 
     return {

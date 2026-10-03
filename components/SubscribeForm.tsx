@@ -10,7 +10,9 @@ export interface SubscribePrefs {
     topics: string[];
     regions: string[];
     usTravelOnly: boolean;
-    minDaysOut: number;
+    homeCountry: string;
+    wantsTravel: boolean;
+    urgentDeadlines: boolean;
     frequency: string;
 }
 
@@ -32,11 +34,10 @@ const REGIONS: { value: string; label: string }[] = [
     { value: 'ONLINE', label: 'Online' },
 ];
 
-const LEAD_TIMES: { value: number; label: string }[] = [
-    { value: 0, label: 'Everything, however soon' },
-    { value: 7, label: 'At least a week out' },
-    { value: 21, label: 'At least 3 weeks out' },
-    { value: 45, label: 'At least 6 weeks out' },
+const HOME_COUNTRIES: { value: string; label: string }[] = [
+    { value: 'CA', label: 'Canada' },
+    { value: 'US', label: 'The United States' },
+    { value: 'OTHER', label: 'Somewhere else' },
 ];
 
 const FREQUENCIES: { value: string; label: string }[] = [
@@ -50,7 +51,9 @@ const DEFAULTS: SubscribePrefs = {
     topics: ['hackathon'],
     regions: ['CA', 'US'],
     usTravelOnly: false,
-    minDaysOut: 21,
+    homeCountry: 'CA',
+    wantsTravel: false,
+    urgentDeadlines: true,
     frequency: 'weekly',
 };
 
@@ -67,7 +70,9 @@ const SubscribeForm = ({ token, initial }: Props) => {
     const [topics, setTopics] = useState<string[]>(start.topics);
     const [regions, setRegions] = useState<string[]>(start.regions);
     const [usTravelOnly, setUsTravelOnly] = useState(start.usTravelOnly);
-    const [minDaysOut, setMinDaysOut] = useState(start.minDaysOut);
+    const [homeCountry, setHomeCountry] = useState(start.homeCountry ?? 'CA');
+    const [wantsTravel, setWantsTravel] = useState(start.wantsTravel ?? false);
+    const [urgentDeadlines, setUrgentDeadlines] = useState(start.urgentDeadlines ?? true);
     const [frequency, setFrequency] = useState(start.frequency ?? 'weekly');
     const [state, setState] = useState<'idle' | 'saving' | 'done'>('idle');
     const [error, setError] = useState('');
@@ -80,11 +85,11 @@ const SubscribeForm = ({ token, initial }: Props) => {
             const res = await fetch('/api/subscribe', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ email, topics, regions, usTravelOnly, minDaysOut, frequency, token }),
+                body: JSON.stringify({ email, topics, regions, usTravelOnly, homeCountry, wantsTravel, urgentDeadlines, frequency, token }),
             });
             const data = await res.json().catch(() => ({}));
             if (!res.ok) throw new Error(data?.error ?? 'Something went wrong. Try again.');
-            posthog.capture('digest_subscribed', { topics, regions, usTravelOnly, minDaysOut, frequency, updated: !!token });
+            posthog.capture('digest_subscribed', { topics, regions, usTravelOnly, homeCountry, wantsTravel, urgentDeadlines, frequency, updated: !!token });
             setState('done');
         } catch (err) {
             setError((err as Error).message);
@@ -100,7 +105,7 @@ const SubscribeForm = ({ token, initial }: Props) => {
                 <p className="text-light-200 max-w-md text-sm">
                     {token
                         ? 'Your next digest will use the updated filters.'
-                        : `We'll email ${email} when something matching turns up — and when hackathon applications open. Nothing to say that day means no email.`}
+                        : `We'll email ${email} when something matching turns up — when hackathon applications open, and before the deadline that applies to you. Nothing to say means no email.`}
                 </p>
             </div>
         );
@@ -188,23 +193,41 @@ const SubscribeForm = ({ token, initial }: Props) => {
                 </p>
             </div>
 
-            <div className="flex flex-col gap-2">
-                <label htmlFor="lead" className="label">
-                    How far ahead? <span className="normal-case">(hackathon applications close early)</span>
-                </label>
+            <fieldset className="flex flex-col gap-2">
+                <legend className="label mb-2">Where are you applying from?</legend>
                 <select
-                    id="lead"
+                    id="home"
+                    aria-label="Where are you applying from?"
                     className="field w-full"
-                    value={minDaysOut}
-                    onChange={(e) => setMinDaysOut(Number(e.target.value))}
+                    value={homeCountry}
+                    onChange={(e) => setHomeCountry(e.target.value)}
                 >
-                    {LEAD_TIMES.map((l) => (
-                        <option key={l.value} value={l.value}>
-                            {l.label}
+                    {HOME_COUNTRIES.map((c) => (
+                        <option key={c.value} value={c.value}>
+                            {c.label}
                         </option>
                     ))}
                 </select>
-            </div>
+                <p className="text-light-200 text-xs">
+                    Hackathons often have a priority round and a regular one. If you&apos;d be travelling in from another
+                    country, we remind you of the priority deadline — the early decision leaves time for travel and
+                    visas, and travel funding often goes to early applicants.
+                </p>
+                <div className="mt-1 flex flex-col gap-2">
+                    {checkbox(
+                        wantsTravel,
+                        () => setWantsTravel((v) => !v),
+                        "I'd need travel support",
+                        'Also remind me of travel-reimbursement application deadlines',
+                    )}
+                    {checkbox(
+                        urgentDeadlines,
+                        () => setUrgentDeadlines((v) => !v),
+                        'Always email me about deadlines in the next 3 days',
+                        "Even between digests — at most one extra email a day, only for deadlines you haven't been reminded of",
+                    )}
+                </div>
+            </fieldset>
 
             {error && <p className="text-amber text-sm">{error}</p>}
 

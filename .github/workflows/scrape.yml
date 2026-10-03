@@ -99,6 +99,11 @@ jobs:
     runs-on: ubuntu-latest
     needs: scrape
     if: always()
+    # Shared with the 6-hourly application check (apps-check.yml) so the two
+    # passes never write the same enrichment docs at the same time. (ADR-029)
+    concurrency:
+      group: hackathon-enrichment
+      cancel-in-progress: false
     # Backstop only — the script enforces its own 12-minute budget and defers
     # the rest to the next run. Both exist because an early browser-enabled run
     # sat at 60+ minutes.

@@ -64,7 +64,7 @@ if (!messages.length) {
     process.exit(0);
 }
 for (const m of messages) {
-    console.log(`  → ${m.to.join(', ')}: ${JSON.stringify(m.counts)} "${m.subject}"`);
+    console.log(`  → ${m.to.join(', ')}${m.kind === 'urgent' ? ' [urgent]' : ''}: ${JSON.stringify(m.counts)} "${m.subject}"`);
 }
 if (DRY_RUN) {
     console.log('Dry run: nothing sent, nothing confirmed.');
@@ -97,7 +97,14 @@ for (const m of messages) {
         });
         // A redirected test send must not advance anyone's real state.
         if (!TO_OVERRIDE) {
-            delivered.push({ subscriberId: m.subscriberId, openIds: m.openIds ?? [], messageId: info?.messageId });
+            delivered.push({
+                subscriberId: m.subscriberId,
+                kind: m.kind ?? 'digest',
+                openIds: m.openIds ?? [],
+                deadlineKeys: m.deadlineKeys ?? [],
+                riskIds: m.riskIds ?? [],
+                messageId: info?.messageId,
+            });
         }
         console.log(`sent → ${TO_OVERRIDE || m.to.join(', ')}${m.inReplyTo ? ' (threaded)' : ''}${TO_OVERRIDE ? ' [test redirect — not confirmed]' : ''}`);
     } catch (e) {

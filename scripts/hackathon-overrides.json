@@ -1,5 +1,5 @@
 {
-  "_comment": "Hostname-keyed curated overrides for the enrichment script (travel policy only — application status is time-varying and would rot here). Sources verified 2026-08-16; refresh when an org announces a policy change.",
+  "_comment": "Hostname-keyed curated overrides for the enrichment script. `travel` = org-level travel policy (verified 2026-08-16; refresh when an org announces a change). `editions` = application deadlines pinned to ONE edition by its start date (applied only to the event doc starting within 3 days of eventStart, so they go inert once that edition passes instead of rotting into next year's listing). Keys match the exact host; only per-year subdomains (2026.example.org) fall back to the parent domain. ADR-029.",
   "hackmit.org": {
     "travel": {
       "status": "yes",
@@ -36,7 +36,26 @@
     "travel": {
       "status": "yes",
       "evidence": "Curated: Cal Hacks runs a travel-stipend application (apply.calhacks.io/travel); amounts are need-based and not published."
-    }
+    },
+    "editions": [
+      {
+        "eventStart": "2026-10-23",
+        "deadlines": [
+          {
+            "kind": "priority",
+            "date": "2026-09-13",
+            "audience": "all",
+            "evidence": "Curated: Cal Hacks 13.0 — \"apply at hive.hackberkeley.org by 9/13 (priority) / 9/20 (regular)\"; priority applicants heard back by Sep 17."
+          },
+          {
+            "kind": "regular",
+            "date": "2026-09-20",
+            "audience": "all",
+            "evidence": "Curated: Cal Hacks 13.0 — \"apply at hive.hackberkeley.org by 9/13 (priority) / 9/20 (regular)\"."
+          }
+        ]
+      }
+    ]
   },
   "mchacks.ca": {
     "travel": {
@@ -74,5 +93,21 @@
       "status": "no",
       "evidence": "Curated: Knight Hacks does not provide travel reimbursement beyond chartered buses (FIU/UF/USF) due to budget constraints."
     }
+  },
+  "hackprinceton.com": {
+    "editions": [
+      {
+        "eventStart": "2026-11-13",
+        "deadlines": [
+          {
+            "kind": "regular",
+            "date": "2026-09-28",
+            "tz": "America/New_York",
+            "audience": "all",
+            "evidence": "Curated: HackPrinceton social posts — \"Fall 2026 applications due Sept 28\" (portal: my.hackprinceton.com)."
+          }
+        ]
+      }
+    ]
   }
 }

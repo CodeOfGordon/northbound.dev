@@ -544,6 +544,135 @@ have to be exactly accurate"), which is safe precisely because the label is hone
 
 ---
 
+## ADR-029 — Application-first hackathon tracking: deadline tiers, read-time state, no lead-time gate (2026-10-03)
+**Status**: Accepted · 2026-10-03 (plan: `docs/plans/hackathon-application-deadlines.md`)
+
+**Context**: Two misses in one week. HackPrinceton's Fall 2026 hacker applications closed
+Sep 28 (event Nov 13) with no warning; gordon found out from Instagram. Cal Hacks 13.0 kept
+showing "open" after its Sep 20 close. Traced causes:
+- the deadline regex only read month names, so Cal Hacks' "by 9/13 (priority) / 9/20
+  (regular)" stored nothing;
+- bare "Apply now" CTAs (and mentor/volunteer ones) counted as open, and the apply portal
+  was never fetched;
+- the digest's `minDaysOut` lead-time filter gated on event start, including deadline
+  reminders;
+- reminders required status `open`, so known-deadline/unknown-status events were never
+  reminded;
+- recheck cadence was event-date based, and hosts were taken in insertion order;
+- Devpost in-person rows read "open until the event ends".
+
+**Decisions**:
+- **Read-time resolver.** `applicationState(event, applicant, now)` in `lib/hackathon.ts`
+  is the single merge point. It replaces `applicationSignal()`. Every page and the digest
+  resolve per request (`lib/events.ts` attaches `doc.app` in `toDoc`), so a deadline
+  passing or an observation going stale changes what is shown without any write.
+- **Deadline tiers.** Tiers are stored separately in the enrichment-owned
+  `enrichment.application.deadlines[]`: `{kind: priority|regular|international|travel,
+  date, time?, tz?, audience: all|domestic|international|restricted, source:
+  site|curated|platform, evidence}`. Observations go in `openSeenAt` / `closedSeenAt`,
+  alongside `waitlist`, `rolling`, `portal`, and `checkedAt` (from the light pass). The
+  legacy `deadline` is still written (the final all-audience close). Wipe safety is
+  unchanged: the path stays out of `CanonicalEvent` (ADR-018).
+- **Applicant profile.** It is `{country: CA|US|OTHER, wantsTravel}`, read from the
+  `nb_applicant` cookie (the "Applying from" control), defaulting from
+  `x-vercel-ip-country`, else CA. For applicants from abroad, or who need travel money,
+  the **priority tier is the act-by date** while it is open. The regular (or an
+  applicable international) tier stays the hard close. A passed priority tier never
+  closes anything. Restricted tiers are shown and never used.
+- **Status rules.** `closed` = the hard close has passed, or the newest observation is
+  "closed". `unknown` + a future deadline = `open` with confidence `deadline`. An `open`
+  backed only by an observation older than 48 h is `stale`, worded "Open as of …"
+  (P3). `closing_soon` = act-by within 7 days. Instants come from date + time + tz
+  (default 23:59 in the EVENT's zone, not Toronto's).
+- **`minDaysOut` retired.** It is gone from the form, API, model and matcher. Hackathon
+  rules gain `requireApplicable` (reject `closed` for this subscriber). The subscriber
+  model gains `homeCountry`, `wantsTravel`, `urgentDeadlines` (default on),
+  `notifiedDeadlineKeys`, `notifiedRiskIds` and `lastUrgentAt`. Stale `minDaysOut` keys on
+  existing docs are left inert. There is no migration (G2).
+- **Digest.** Sections are Closing soon → Applications opened → Deadline not published →
+  New for you. Each tier is reminded at most twice (`<id>:<kind>:<date>:early|final`).
+  The **urgent path** sends a deadline-only email when a tier is inside its final 72 h,
+  or a hackathon is first seen within 7 days of a deadline, even when the regular
+  cadence isn't due. It sends at most once a day and moves `lastUrgentAt` only, not the
+  cadence cursor.
+- **Enrichment.**
+  - Classifiers moved to `scripts/lib/classify-application.mjs` (pure, tested).
+  - Hacker-scoped: mentor/volunteer/judge/sponsor clauses are vetoed, and CTAs only flag
+    a portal check.
+  - Every tier is extracted from month-name, numeric (`9/20`) and ISO dates, with
+    times, zone abbreviations (ET/PT/CT/MT/AoE), "extended until", weekday-checked year
+    inference and "students only" restrictions.
+  - The page's own apply link is followed **cross-host** (never a guessed `apply.<site>`).
+    Portal closed markers (Google Forms/Typeform/Tally/Luma/generic) outrank the
+    landing page, and a sign-in wall is `unknown`, never `open`.
+  - Recheck cadence is driven by state: 24 h for open/unknown near a deadline, 48 h
+    not_yet, 72 h open further out, 168 h closed, plus a check on the day after any
+    deadline. Stale hosts are processed nearest-deadline first.
+  - Selection horizon is 365 days (was 183).
+  - A failed fetch keeps prior application and travel data instead of erasing it.
+- **Light pass.** `.github/workflows/apps-check.yml` runs `--apps-only` every 6 h: landing
+  page + portal, static only, a 5-minute budget, writing only `enrichment.application`.
+  It is free (public-repo runners, free sources) and shares a `hackathon-enrichment`
+  concurrency group with the nightly enrich job.
+- **Curated edition deadlines.** These go in `scripts/hackathon-overrides.json`
+  `editions[]`, pinned to one edition (±3 days of `eventStart`) so they cannot rot. Cal
+  Hacks 13.0 and HackPrinceton F26 are seeded. Override lookup is exact-host, with
+  parent-domain fallback **only** for `www`/year subdomains. The old blanket fallback
+  handed HackGT's travel policy to the Georgia-Tech-only `sprout.hack.gt`. Watchlist:
+  HackPrinceton added, TreeHacks `knownNext` 2027-02-12.
+- **Devpost in-person** (amends ADR-019). It emits `applicationStatus: 'unknown'` and no
+  `applicationDeadline`, because the submission window is the event. The resolver also
+  ignores those fields for in-person Devpost rows, so stale DB rows are fixed at read
+  time.
+- **Site.**
+  - The hackathon lane default is the **application planner**, which replaces the
+    6-month event-date horizon. Buckets: Closes this week / Closes this month / Later /
+    No deadline published / Not open yet / closed (folded).
+  - Home gets an "Applications closing this week" strip.
+  - Rows and cards show the viewer's act-by date and tier.
+  - The detail page gets a tier table with provenance and age, plus "Add deadline to
+    calendar".
+  - `applications=open` (feed and `/api/events`) post-filters through the resolver, so
+    filter and badge agree.
+  - Urgency uses mint weight only; amber stays company-only (G3).
+- **Tests.** There is a `node:test` suite (`npm test`, 43 cases) with no new dependency:
+  Node 22 strips types natively, and `tests/resolve-hook.mjs` maps the `@/` alias.
+
+**Rationale**:
+- Event distance is a bad proxy for "can I still apply". HackPrinceton (Nov 13) cleared
+  even the 45-day option by one day, and Cal Hacks' reminders fell inside it. The state
+  that matters can only be computed at read time.
+- No platform exposes hacker-application deadlines for NA university majors (MLH: none;
+  Devpost: submission windows only — research report 2026-09-28). So organizer sites,
+  portals and curation are the only sources, and the product must be honest about age
+  and absence ("Open as of …", "No deadline published").
+- No dependency added: in-house date parsing covers the observed phrasings, and the
+  `node:test` runner needs no package. chrono-node (MIT) was tested in research and parses
+  the same strings. It is a drop-in candidate if recall measurements ever justify a
+  dependency (approval-gated).
+
+**Consequences**:
+- Every hackathon read does a little more CPU work (resolver per doc). Resolved-filter
+  paths fetch up to 500 candidates.
+- Live data: existing docs resolve through the legacy fields until their next enrichment
+  writes `deadlines[]` (curated tiers apply on the next nightly). Devpost in-person rows
+  stop reading "open" immediately (read-time rule), and their stored status flips to
+  `unknown` on the next scrape.
+- The 6-hourly pass adds about 4 short Actions runs a day (free).
+- Verified end-to-end on 2026-10-03 against a local mongod 8.3.7 with fixture sites:
+  enrichment classified every scenario, the planner and detail pages rendered for CA and
+  US viewers, and the digest compose → confirm → re-compose cycle sent each reminder
+  exactly once. Not verified: production data, which was not reachable from this session
+  (MongoDB MCP down, no `MONGODB_URI`). Run the plan's Phase 0 read-only query, and a
+  `--dry-run`, after deploy.
+- Rejected:
+  - scraping Instagram/X for announcements (ToS, paid actors — G1);
+  - the on-read verify endpoint, plan F3e (a public endpoint writing to prod; the
+    6-hourly pass covers it);
+  - a new urgency color token (amber is company-only).
+
+---
+
 ## Known follow-ups / tech debt
 - ~~`database/mongodb.ts` stray `v8` import~~ — already removed.
 - ~~`normalizeDate()` UTC day-shift~~ — **fixed 2026-06-10**: `normalizeDate`/`normalizeTime` extract wall-clock parts in the event's IANA timezone (`Intl.DateTimeFormat`); `event.model.ts` reuses the same helpers.

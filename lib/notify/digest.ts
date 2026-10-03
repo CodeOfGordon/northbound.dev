@@ -1,22 +1,47 @@
 /**
  * Digest orchestration — builds ONE personalized email per active subscriber
- * from their own filters and their own delivery cursor, then hands the rendered
+ * from their own filters and their own delivery state, then hands the rendered
  * messages to the GitHub Actions runner, which does the actual Gmail SMTP send
  * (Vercel blocks outbound SMTP). State advances only after the runner confirms
  * a successful send — at-least-once: a failure means the same digest is retried
  * next run, never silently dropped. (ADR-025/026)
  *
+ * Application state is resolved per subscriber at compose time (ADR-029):
+ * which deadline tier is theirs depends on where they apply from, and "open"
+ * is judged against now, not a stored string.
+ *
  * Sections per subscriber:
- *   A "New events for you"   — created since their cursor, matching their rules
- *   B "Applications now open" — hackathons open and not yet announced to THEM
- *   C "Deadlines approaching" — application deadlines 7/3/1 days out (stateless)
+ *   1 "Closing soon — apply now" — every applicable deadline tier inside their
+ *     window, priority and regular reminded separately; includes hackathons
+ *     whose status is unknown but whose deadline is known
+ *   2 "Applications opened"      — open and not yet announced to THEM
+ *   3 "Deadline not published"   — in-person majors near their start with no
+ *     deadline anywhere we read (once per event)
+ *   4 "New for you"              — created since their cursor, matching rules
+ *
+ * Urgent path: a deadline inside its last 72 h that this subscriber hasn't had
+ * a final reminder for goes out even when their weekly/biweekly/monthly digest
+ * isn't due — at most one such email a day, deadline items only.
  */
 import 'server-only';
 import { Event, Subscriber, DigestMeta, FREQUENCY_DAYS } from '@/database';
 import { matchEvent, rulesForSubscriber, type EventLike, type InterestRule } from '@/lib/notify/match';
 import { renderDigest, type DigestItem, type DigestSections } from '@/lib/notify/email';
-import { todayInToronto } from '@/lib/events';
-import { addDaysISO, monthDay } from '@/lib/format';
+import { toEventDoc, todayInToronto, type EventDoc } from '@/lib/events';
+import {
+    APPLICANT_COUNTRY_LABEL,
+    KIND_LABEL,
+    RISK_NOTE,
+    applicationState,
+    dueWhen,
+    isApplicable,
+    shortDate,
+    staleNote,
+    type Applicant,
+    type ApplicationState,
+    type Due,
+} from '@/lib/hackathon';
+import { monthDay } from '@/lib/format';
 
 export interface DigestOptions {
     /** 'compose' (default): build + render, no send. 'confirm': record a send. */
@@ -28,20 +53,33 @@ export interface DigestOptions {
      * unsubscribe link, which is a compliance failure, not a cosmetic one.
      */
     siteUrl?: string;
-    /** Bypass the per-subscriber same-day guard. */
+    /** Bypass the per-subscriber cadence guard. */
     force?: boolean;
     /** Compose without advancing cursors (testing). */
     dryRun?: boolean;
     /** confirm: the cursor compose returned. */
     cursor?: string;
     /** confirm: which subscribers were delivered, and what was announced to them. */
-    results?: { subscriberId: string; openIds?: string[]; messageId?: string }[];
+    results?: DigestConfirmation[];
     /** compose: the address the runner will send from (used in List-Unsubscribe). */
     sender?: string;
+    /** Testing hook: compose as of this instant instead of now. */
+    now?: Date;
+}
+
+export interface DigestConfirmation {
+    subscriberId: string;
+    kind?: 'digest' | 'urgent';
+    openIds?: string[];
+    deadlineKeys?: string[];
+    riskIds?: string[];
+    messageId?: string;
 }
 
 export interface DigestMessage {
     subscriberId: string;
+    /** 'urgent' = deadline-only send between regular digests; doesn't move the cadence cursor. */
+    kind: 'digest' | 'urgent';
     to: string[];
     subject: string;
     html: string;
@@ -49,7 +87,11 @@ export interface DigestMessage {
     headers: Record<string, string>;
     /** Event ids announced as "applications open" — stamped on confirm. */
     openIds: string[];
-    counts: { newEvents: number; appsOpen: number; deadlines: number };
+    /** Deadline reminders included — stamped on confirm. */
+    deadlineKeys: string[];
+    /** "Deadline not published" flags included — stamped on confirm. */
+    riskIds: string[];
+    counts: { newEvents: number; appsOpen: number; deadlines: number; risks: number };
     /** Message-ID of their previous digest — the runner threads onto it. */
     inReplyTo?: string;
 }
@@ -66,15 +108,13 @@ export interface DigestResult {
 
 const SITE_URL_FALLBACK = (process.env.NEXT_PUBLIC_SITE_URL ?? 'https://northbound-dev.vercel.app').replace(/\/$/, '');
 
+/** Inside this many hours a reminder is the "final" one the urgent path guarantees. */
+const FINAL_HOURS = 72;
+
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-/** Resolved application deadline — scrape field wins, else enrichment. */
-const deadlineOf = (d: any): string | undefined => d.applicationDeadline ?? d.enrichment?.application?.deadline;
-const isOpen = (d: any): boolean =>
-    d.applicationStatus === 'open' || (d.applicationStatus == null && d.enrichment?.application?.status === 'open');
-
 /** Email wording mirrors the site: a past edition is never stated as this year's policy. */
-function travelNote(d: any): string | undefined {
+function travelNote(d: EventDoc): string | undefined {
     const t = d.enrichment?.travel;
     if (!t || t.status !== 'yes') return undefined;
     if (t.basis === 'prior-edition') {
@@ -83,11 +123,38 @@ function travelNote(d: any): string | undefined {
     return t.amount ? `Travel reimbursement offered · ${t.amount}` : 'Travel reimbursement offered';
 }
 
-function toItem(d: any, labels?: string[]): DigestItem {
+/** "closes today" / "closes tomorrow" / "closes in 5 days". */
+function closesIn(due: Due): string {
+    if (due.daysLeft <= 0) return 'closes today';
+    if (due.daysLeft === 1) return 'closes tomorrow';
+    return `closes in ${due.daysLeft} days`;
+}
+
+/**
+ * The reminder line for one tier, worded for this subscriber:
+ *   "Priority deadline Sep 13 — closes in 2 days · recommended since you'd travel in from Canada · regular Sep 20"
+ */
+export function reminderLine(s: ApplicationState, due: Due, who: Applicant): string {
+    const head = `${KIND_LABEL[due.kind][0].toUpperCase()}${KIND_LABEL[due.kind].slice(1)} deadline ${dueWhen(due)} — ${closesIn(due)}`;
+    const why =
+        due === s.actBy && s.actByReason === 'abroad'
+            ? `recommended since you'd travel in from ${APPLICANT_COUNTRY_LABEL[who.country]}`
+            : due === s.actBy && s.actByReason === 'travel'
+              ? 'recommended if you need travel support'
+              : due.kind === 'priority' && !s.actByReason
+                ? 'for an early decision'
+                : '';
+    const others = s.upcoming.filter((d) => d !== due).map((d) => `${KIND_LABEL[d.kind]} ${shortDate(d.date)}`);
+    return [head, why, ...others].filter(Boolean).join(' · ');
+}
+
+function toItem(d: EventDoc, extra: Partial<DigestItem> = {}): DigestItem {
     return {
         title: d.title, slug: d.slug, date: d.date, endDate: d.endDate,
         city: d.city, country: d.country, region: d.region, mode: d.mode,
-        url: d.url, labels, deadline: deadlineOf(d), travel: travelNote(d),
+        url: d.url, travel: travelNote(d),
+        deadline: d.app?.actBy?.date,
+        ...extra,
     };
 }
 
@@ -103,39 +170,34 @@ function daysBetween(from: string, to: string): number {
     return Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86_400_000);
 }
 
+export const deadlineKey = (id: string, due: Due, bucket: 'early' | 'final') => `${id}:${due.kind}:${due.date}:${bucket}`;
+
+export function applicantOf(sub: any): Applicant {
+    const country = sub.homeCountry === 'US' || sub.homeCountry === 'OTHER' ? sub.homeCountry : 'CA';
+    // A subscriber who filters US events to travel-covered ones needs travel money.
+    return { country, wantsTravel: !!sub.wantsTravel || !!sub.usTravelOnly };
+}
+
 export async function runDigest(opts: DigestOptions = {}): Promise<DigestResult> {
     if (opts.mode === 'confirm') return confirmSends(opts);
 
-    const runStarted = new Date();
-    const today = todayInToronto();
+    const runStarted = opts.now ?? new Date();
+    const today = opts.now ? torontoDay(opts.now) : todayInToronto();
     const siteUrl = (opts.siteUrl ?? SITE_URL_FALLBACK).replace(/\/$/, '');
 
     const subs = await Subscriber.find({ status: 'active' }).lean<any[]>();
     if (!subs.length) return { ok: true, messages: [], subscribers: 0, skipped: 'no active subscribers' };
 
     // Widest window across subscribers — candidates are fetched once and
-    // filtered per subscriber in memory (the lists are tens of docs).
+    // filtered per subscriber in memory (the lists are tens to low hundreds).
     const cursors = subs.map((s) => (s.lastDigestAt ? new Date(s.lastDigestAt).getTime() : runStarted.getTime()));
     const minSince = new Date(Math.min(...cursors));
-    const deadlineTargets = [addDaysISO(today, 7), addDaysISO(today, 3), addDaysISO(today, 1)];
 
-    const [created, openDocs, deadlineDocs] = await Promise.all([
+    const [created, hackathons] = await Promise.all([
         Event.find({ createdAt: { $gt: minSince }, date: { $gte: today } }).lean<any[]>(),
         Event.find({
             category: 'hackathon',
-            $and: [
-                { $or: [{ applicationStatus: 'open' }, { 'enrichment.application.status': 'open' }] },
-                { $or: [{ date: { $gte: today } }, { endDate: { $gte: today } }] },
-            ],
-        }).lean<any[]>(),
-        // Widest window any cadence can ask for (monthly = 30 + 3 margin);
-        // each subscriber narrows this to their own window below.
-        Event.find({
-            category: 'hackathon',
-            $or: [
-                { applicationDeadline: { $gte: today, $lte: addDaysISO(today, 33) } },
-                { 'enrichment.application.deadline': { $gte: today, $lte: addDaysISO(today, 33) } },
-            ],
+            $or: [{ date: { $gte: today } }, { endDate: { $gte: today } }],
         }).lean<any[]>(),
     ]);
 
@@ -143,86 +205,123 @@ export async function runDigest(opts: DigestOptions = {}): Promise<DigestResult>
     const emptyCursorIds: any[] = [];
 
     for (const sub of subs) {
-        // Cadence guard, which also makes reruns idempotent (daily = same-day guard).
         const freqDays = FREQUENCY_DAYS[sub.frequency ?? 'weekly'] ?? 7;
-        if (!opts.force && sub.lastSentAt && daysBetween(torontoDay(new Date(sub.lastSentAt)), today) < freqDays) {
-            continue;
-        }
+        const cadenceDue =
+            !!opts.force || !sub.lastSentAt || daysBetween(torontoDay(new Date(sub.lastSentAt)), today) >= freqDays;
+        const urgentAllowed =
+            sub.urgentDeadlines !== false && (!sub.lastUrgentAt || torontoDay(new Date(sub.lastUrgentAt)) !== today);
+        if (!cadenceDue && !urgentAllowed) continue;
 
         const rules: InterestRule[] = rulesForSubscriber({
             topics: sub.topics ?? [],
             regions: sub.regions ?? [],
             usTravelOnly: !!sub.usTravelOnly,
-            minDaysOut: sub.minDaysOut ?? 0,
         });
         if (!rules.length) continue;
 
+        const who = applicantOf(sub);
         const since = sub.lastDigestAt ? new Date(sub.lastDigestAt) : runStarted; // new subscriber: no history blast
-        const notified = new Set<string>((sub.notifiedOpenIds ?? []).map(String));
+        const notifiedOpen = new Set<string>((sub.notifiedOpenIds ?? []).map(String));
+        const notifiedKeys = new Set<string>((sub.notifiedDeadlineKeys ?? []).map(String));
+        const notifiedRisk = new Set<string>((sub.notifiedRiskIds ?? []).map(String));
 
-        // A — new events matching their interests
-        const newEvents: DigestItem[] = [];
-        for (const d of created) {
-            if (new Date(d.createdAt) <= since) continue;
-            const labels = matchEvent(d as EventLike, rules, today);
-            if (labels.length) newEvents.push(toItem(d, labels));
+        // Hackathons resolved for THIS applicant, and whether they match at all.
+        const resolved = hackathons
+            .map((raw) => {
+                const doc = toEventDoc(raw, who, runStarted);
+                const state = doc.app ?? applicationState(doc, who, runStarted);
+                const matches = matchEvent(doc as EventLike, rules, { applicationsClosed: state.status === 'closed' }).length > 0;
+                return { id: String(raw._id), raw, doc, state, matches };
+            })
+            .filter((h) => h.matches);
+
+        // 1 — Closing soon. Regular readers: anything closing before their next
+        // email (+3 days margin; daily readers: within a week). Every tier is
+        // reminded at most twice: once when it enters the window ('early') and
+        // once in its final 72 h ('final', which the urgent path guarantees).
+        const windowDays = freqDays === 1 ? 7 : freqDays + 3;
+        const deadlineItems: DigestItem[] = [];
+        const deadlineKeys: string[] = [];
+        const urgentItems: DigestItem[] = [];
+        const urgentKeys: string[] = [];
+        const createdSince = (raw: any) => raw.createdAt && new Date(raw.createdAt) > since;
+        for (const h of resolved) {
+            if (!isApplicable(h.state)) continue;
+            for (const due of h.state.upcoming) {
+                const hoursLeft = (Date.parse(due.closesAt) - runStarted.getTime()) / 3_600_000;
+                const bucket = hoursLeft <= FINAL_HOURS ? 'final' : 'early';
+                const key = deadlineKey(h.id, due, bucket);
+                if (notifiedKeys.has(key)) continue;
+                const item = toItem(h.doc, { deadlineLabel: reminderLine(h.state, due, who), note: staleNote(h.state) });
+                if (due.daysLeft <= windowDays) {
+                    deadlineItems.push(item);
+                    deadlineKeys.push(key);
+                }
+                // Urgent: the final 72 h, or a hackathon first seen this late.
+                const firstSeenLate = createdSince(h.raw) && due.daysLeft <= 7 && !notifiedKeys.has(deadlineKey(h.id, due, 'early'));
+                if (bucket === 'final' || firstSeenLate) {
+                    urgentItems.push(item);
+                    urgentKeys.push(key);
+                }
+            }
         }
 
-        // B — applications open, not yet announced to THIS subscriber
-        const appsOpen: DigestItem[] = [];
-        const openIds: string[] = [];
-        for (const d of openDocs) {
-            if (notified.has(String(d._id))) continue;
-            if (!isOpen(d)) continue; // scrape status overrides a stale enrichment 'open'
-            const deadline = deadlineOf(d);
-            if (deadline && deadline < today) continue;
-            if (!matchEvent(d as EventLike, rules, today).length) continue;
-            appsOpen.push(toItem(d));
-            openIds.push(String(d._id));
-        }
-
-        // C — deadline reminders. Daily readers get the classic 7/3/1 nudges;
-        // anyone slower gets everything closing before their NEXT email (plus a
-        // 3-day margin), otherwise a weekly reader would hear about a deadline
-        // days after it passed.
-        const deadlineWindowEnd = freqDays === 1 ? null : addDaysISO(today, freqDays + 3);
-        const deadlines: DigestItem[] = [];
-        for (const d of deadlineDocs) {
-            const deadline = deadlineOf(d);
-            if (!deadline) continue;
-            const inWindow = deadlineWindowEnd
-                ? deadline >= today && deadline <= deadlineWindowEnd
-                : deadlineTargets.includes(deadline);
-            if (!inWindow) continue;
-            if (!isOpen(d)) continue;
-            if (!matchEvent(d as EventLike, rules, today).length) continue;
-            deadlines.push(toItem(d));
-        }
-
-        const counts = { newEvents: newEvents.length, appsOpen: appsOpen.length, deadlines: deadlines.length };
-        if (!counts.newEvents && !counts.appsOpen && !counts.deadlines) {
-            emptyCursorIds.push(sub._id); // nothing to say — just advance their window
+        // Not due for a regular digest: maybe an urgent deadline-only email.
+        if (!cadenceDue) {
+            if (urgentAllowed && urgentItems.length) {
+                const sections: DigestSections = { deadlines: dedupeItems(urgentItems), appsOpen: [], risks: [], newEvents: [] };
+                messages.push(compose(sub, sections, 'urgent', urgentKeys, [], [], siteUrl, today, opts.sender));
+            }
             continue;
         }
 
-        const sections: DigestSections = { newEvents, appsOpen, deadlines };
-        const rendered = renderDigest(sections, siteUrl, monthDay(today), {
-            email: sub.email,
-            unsubscribeUrl: `${siteUrl}/unsubscribe?token=${sub.token}`,
-            oneClickUrl: `${siteUrl}/api/unsubscribe?token=${sub.token}`,
-            manageUrl: `${siteUrl}/subscribe?token=${sub.token}`,
-            // The runner sends as this address; the mailto unsubscribe must match it.
-            sender: opts.sender,
-        });
+        // 2 — Applications opened, not yet announced to THIS subscriber. An
+        // open claim backed only by a stale observation is not announced (P3).
+        const appsOpen: DigestItem[] = [];
+        const openIds: string[] = [];
+        const closingSlugs = new Set(deadlineItems.map((i) => i.slug));
+        for (const h of resolved) {
+            if (notifiedOpen.has(h.id) || !isApplicable(h.state) || h.state.confidence === 'stale') continue;
+            openIds.push(h.id);
+            // Already in "Closing soon" — that row says it's open; don't list it twice.
+            if (closingSlugs.has(h.doc.slug)) continue;
+            appsOpen.push(toItem(h.doc, { deadlineLabel: h.state.actBy ? reminderLine(h.state, h.state.actBy, who) : undefined }));
+        }
 
-        messages.push({
-            subscriberId: String(sub._id),
-            to: [sub.email],
-            ...rendered,
-            openIds,
-            counts,
-            inReplyTo: sub.lastMessageId,
-        });
+        // 3 — Deadline not published (F6), once per event.
+        const risks: DigestItem[] = [];
+        const riskIds: string[] = [];
+        for (const h of resolved) {
+            if (h.state.risk !== 'deadline-unpublished' || notifiedRisk.has(h.id)) continue;
+            risks.push(toItem(h.doc, { note: RISK_NOTE }));
+            riskIds.push(h.id);
+        }
+
+        // 4 — New events matching their interests (hackathons not already above).
+        const listed = new Set([...deadlineItems, ...appsOpen, ...risks].map((i) => i.slug));
+        const newEvents: DigestItem[] = [];
+        for (const raw of created) {
+            if (new Date(raw.createdAt) <= since) continue;
+            const doc = toEventDoc(raw, who, runStarted);
+            if (listed.has(doc.slug)) continue;
+            const labels = matchEvent(doc as EventLike, rules, { applicationsClosed: doc.app?.status === 'closed' });
+            if (!labels.length) continue;
+            const s = doc.app;
+            newEvents.push(
+                toItem(doc, {
+                    labels,
+                    deadlineLabel: s?.actBy ? reminderLine(s, s.actBy, who) : undefined,
+                    note: s?.status === 'not_yet' ? "Applications aren't open yet — we'll tell you when they are" : staleNote(s!),
+                }),
+            );
+        }
+
+        const sections: DigestSections = { deadlines: dedupeItems(deadlineItems), appsOpen, risks, newEvents };
+        if (!sections.deadlines.length && !appsOpen.length && !risks.length && !newEvents.length) {
+            emptyCursorIds.push(sub._id); // nothing to say — just advance their window
+            continue;
+        }
+        messages.push(compose(sub, sections, 'digest', deadlineKeys, openIds, riskIds, siteUrl, today, opts.sender));
     }
 
     // Advance the considered-through cursor for subscribers with nothing to send,
@@ -234,6 +333,55 @@ export async function runDigest(opts: DigestOptions = {}): Promise<DigestResult>
     return { ok: true, messages, cursor: runStarted.toISOString(), subscribers: subs.length };
 }
 
+/** Same event + same reminder line once (priority and regular stay separate rows). */
+function dedupeItems(items: DigestItem[]): DigestItem[] {
+    const seen = new Set<string>();
+    return items.filter((i) => {
+        const k = `${i.slug}|${i.deadlineLabel ?? ''}`;
+        if (seen.has(k)) return false;
+        seen.add(k);
+        return true;
+    });
+}
+
+function compose(
+    sub: any,
+    sections: DigestSections,
+    kind: 'digest' | 'urgent',
+    deadlineKeys: string[],
+    openIds: string[],
+    riskIds: string[],
+    siteUrl: string,
+    today: string,
+    sender?: string,
+): DigestMessage {
+    const rendered = renderDigest(sections, siteUrl, monthDay(today), {
+        email: sub.email,
+        unsubscribeUrl: `${siteUrl}/unsubscribe?token=${sub.token}`,
+        oneClickUrl: `${siteUrl}/api/unsubscribe?token=${sub.token}`,
+        manageUrl: `${siteUrl}/subscribe?token=${sub.token}`,
+        // The runner sends as this address; the mailto unsubscribe must match it.
+        sender,
+        urgent: kind === 'urgent',
+    });
+    return {
+        subscriberId: String(sub._id),
+        kind,
+        to: [sub.email],
+        ...rendered,
+        openIds,
+        deadlineKeys,
+        riskIds,
+        counts: {
+            newEvents: sections.newEvents.length,
+            appsOpen: sections.appsOpen.length,
+            deadlines: sections.deadlines.length,
+            risks: sections.risks.length,
+        },
+        inReplyTo: sub.lastMessageId,
+    };
+}
+
 /** The runner delivered these messages — advance each subscriber's state. */
 async function confirmSends(opts: DigestOptions): Promise<DigestResult> {
     if (!opts.cursor || Number.isNaN(Date.parse(opts.cursor))) {
@@ -243,11 +391,17 @@ async function confirmSends(opts: DigestOptions): Promise<DigestResult> {
     const results = opts.results ?? [];
 
     for (const r of results) {
-        const set: Record<string, unknown> = { lastDigestAt: at, lastSentAt: at };
+        // An urgent send doesn't move the regular cadence — the weekly digest
+        // still goes out on schedule.
+        const set: Record<string, unknown> = r.kind === 'urgent' ? { lastUrgentAt: at } : { lastDigestAt: at, lastSentAt: at };
         // Anchor the next digest onto this one so they stay one conversation.
         if (r.messageId) set.lastMessageId = r.messageId;
         const update: Record<string, unknown> = { $set: set };
-        if (r.openIds?.length) update.$addToSet = { notifiedOpenIds: { $each: r.openIds } };
+        const add: Record<string, unknown> = {};
+        if (r.openIds?.length) add.notifiedOpenIds = { $each: r.openIds };
+        if (r.deadlineKeys?.length) add.notifiedDeadlineKeys = { $each: r.deadlineKeys };
+        if (r.riskIds?.length) add.notifiedRiskIds = { $each: r.riskIds };
+        if (Object.keys(add).length) update.$addToSet = add;
         await Subscriber.updateOne({ _id: r.subscriberId }, update);
     }
 

@@ -1,14 +1,16 @@
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
-import { Building2, CalendarDays, Clock, Globe, MapPin, Plane, Send, Ticket } from 'lucide-react';
+import { Building2, CalendarDays, Clock, Globe, MapPin, Plane, Ticket } from 'lucide-react';
 import EventImage from '@/components/EventImage';
 import AddToCalendar from '@/components/AddToCalendar';
 import RegisterButton from '@/components/RegisterButton';
+import ApplicationPanel from '@/components/ApplicationPanel';
 import EventGrid from '@/components/EventGrid';
 import { CATEGORY_LABELS, HIDDEN_TAGS, LANE_LABELS, laneOf, MODE_LABELS } from '@/lib/constants';
 import { formatDate, formatLocation, formatPrice, formatTime, formatVenue, isPlaceholderLoc, siteLogo, timeAgo } from '@/lib/format';
-import { applicationSignal, travelSignal } from '@/lib/hackathon';
+import { travelSignal } from '@/lib/hackathon';
 import { getEventBySlug, getRelatedEvents } from '@/lib/events';
+import { getApplicant } from '@/lib/applicant';
 
 type Params = Promise<{ slug: string }>;
 
@@ -59,12 +61,12 @@ function eventJsonLd(event: NonNullable<Awaited<ReturnType<typeof getEventBySlug
 
 const EventPage = async ({ params }: { params: Params }) => {
     const { slug } = await params;
-    const event = await getEventBySlug(slug);
+    const applicant = await getApplicant();
+    const event = await getEventBySlug(slug, applicant);
     if (!event) notFound();
 
-    const related = await getRelatedEvents(event);
+    const related = await getRelatedEvents(event, 3, applicant);
     const tags = event.tags.filter((t) => !HIDDEN_TAGS.includes(t));
-    const appSignal = applicationSignal(event);
     const travel = travelSignal(event);
 
     const chips = [
@@ -174,22 +176,9 @@ const EventPage = async ({ params }: { params: Params }) => {
                                     </span>
                                 );
                             })()}
-                            {appSignal.status !== 'unknown' && (
-                                <span className="flex items-center gap-3">
-                                    <Send className="text-primary size-5 shrink-0" aria-hidden />
-                                    <span>
-                                        {appSignal.status === 'open' && 'Applications open'}
-                                        {appSignal.status === 'closed' && 'Applications closed'}
-                                        {appSignal.status === 'not_yet' && 'Applications open soon'}
-                                        {appSignal.status === 'open' && appSignal.deadline && (
-                                            <span className="text-light-200 block text-sm">
-                                                apply by {formatDate(appSignal.deadline)}
-                                            </span>
-                                        )}
-                                    </span>
-                                </span>
-                            )}
                         </div>
+
+                        <ApplicationPanel event={event} applicant={applicant} />
 
                         {travel && (
                             <div className="border-border-dark flex flex-col gap-1.5 border-t pt-4">

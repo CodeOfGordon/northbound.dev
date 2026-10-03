@@ -93,11 +93,16 @@ export async function fetchDevpost(): Promise<unknown[]> {
                     description,
                     category: 'hackathon',
                     isFree: true,
-                    // Registration on Devpost is possible while a listing is open OR
-                    // upcoming (the submission window starting later doesn't block
-                    // joining) — both map to 'open'. See ADR-019.
-                    applicationStatus: h.open_state === 'open' || h.open_state === 'upcoming' ? 'open' : 'unknown',
-                    applicationDeadline: dates.end,
+                    // Online challenges: registration on Devpost is possible while a
+                    // listing is open OR upcoming (the submission window starting later
+                    // doesn't block joining) — both map to 'open' (ADR-019).
+                    // In-person: the submission window IS the event, so neither field
+                    // says anything about hacker applications, which close weeks
+                    // earlier on the organizer's own portal. Emit an explicit
+                    // 'unknown' so the nightly $set overwrites any stale 'open'
+                    // (ADR-029; lib/hackathon.ts also ignores these at read time).
+                    applicationStatus: online && (h.open_state === 'open' || h.open_state === 'upcoming') ? 'open' : 'unknown',
+                    applicationDeadline: online ? dates.end : undefined,
                     // No _regions: online events default to NA-attendable in the geo gate;
                     // passing ['Online'] would read as a non-NA hint and drop them.
                 });

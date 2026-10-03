@@ -317,3 +317,35 @@ export default async function Page({ searchParams }: { searchParams: Promise<Rec
 - Atlas: whitelist the deploy platform's egress IPs (or `0.0.0.0/0` for serverless where IPs are dynamic), and keep `maxPoolSize` modest so many concurrent functions don't blow the cluster's connection cap.
 - Vercel free-tier cron: minimum interval is once per day (`0 0 * * *`). For tighter schedules self-host the cron (GitHub Actions on schedule, Railway cron, etc.) hitting the scrape route with the `CRON_SECRET`.
 - Create indexes intentionally on deploy (`Event.syncIndexes()`) with `autoIndex: false` in production — don't let a cold start trigger a foreground index build.
+
+---
+
+## Hackathon applications (ADR-029)
+
+- **A lingering "Apply now" is not evidence of open.** Hero buttons and mentor/volunteer
+  CTAs outlive the hacker application on most sites (Cal Hacks 13.0 read "open" after its
+  Sep 20 close). The classifier vetoes role-only clauses and uses CTAs only to trigger a
+  portal check. The portal's closed marker outranks the landing page.
+- **Follow the page's apply link — never guess `apply.<site>`.** `apply.calhacks.io` was
+  still the 12.0 (2025) portal. 13.0 used `hive.hackberkeley.org`, on a different host.
+- **Numeric dates and domains.** "by 9/13 (priority) / 9/20 (regular)": a month-name-only
+  parser stores nothing, and `[^.]` windows stop at the dots in `hive.hackberkeley.org`.
+  Clause windows must only break at a period followed by whitespace.
+- **Deadline zones: the event's, not Toronto's.** An "11:59 PM PT" deadline is still open
+  three hours after Toronto midnight. Untimed deadlines run to 23:59 in the event's zone.
+- **Priority passed ≠ closed.** Only the hard close (regular, or an applicable
+  international cut-off) closes applications. For applicants travelling in, the priority
+  tier is the act-by date, not the cut-off.
+- **Devpost in-person `open_state` is about project submissions**, and its window is the
+  event itself. Never read it as hacker applications (`lib/hackathon.ts` ignores it at
+  read time).
+- **Raw-driver writes serialize `undefined` as `null`** (no `ignoreUndefined`). The
+  enrichment script spreads only defined fields. `mergeApplication()` is the place to
+  keep it that way.
+- **`pkill -f <pattern>` / `pgrep -f` in an agent shell matches the shell's own
+  command line** and kills it (exit 144). Kill by PID from `ps` output instead.
+- **Local verification without prod:** fastdl.mongodb.org is blocked from the cloud
+  sandbox, but conda-forge serves a full `mongod` (`mongodb-8.3.7` `.conda`; unpack with
+  Node 22's `zlib.zstdDecompressSync`). FerretDB 1.x lacks `$cond`, which the feed's
+  ongoing-events aggregate uses. Next 16 dev blocks `/_next/*` dev resources for
+  non-`localhost` origins, so browse `localhost`, not `127.0.0.1`, or React never hydrates.

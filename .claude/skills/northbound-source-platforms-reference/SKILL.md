@@ -136,7 +136,9 @@ to `northbound-run-and-operate`; this section is the domain knowledge — what i
 it classifies, and the traps found live.
 
 **Selection:** every doc with `category:'hackathon'`, `mode != 'online'`, `region in [US,CA]`,
-`date` within the next 183 days. Aggregator hosts (`devpost.com`, `mlh.io`, `mlh.com`,
+`date` within the next 365 days (183 before ADR-029; stale hosts are now processed nearest
+application deadline first, with state-driven recheck cadence and a 6-hourly `--apps-only`
+light pass — see ADR-029 and `scripts/lib/classify-application.mjs`). Aggregator hosts (`devpost.com`, `mlh.io`, `mlh.com`,
 `dorahacks.io`, `ethglobal.com`, `lu.ma`) are skipped — their application signal is already
 API-owned or not worth scanning.
 

@@ -7,9 +7,11 @@ import FilterBar from '@/components/FilterBar';
 import SearchBox from '@/components/SearchBox';
 import Pagination from '@/components/Pagination';
 import CompanyDirectory from '@/components/CompanyDirectory';
+import HackathonPlanner from '@/components/HackathonPlanner';
+import ApplicantToggle from '@/components/ApplicantToggle';
 import { type FeedLane, laneFromParams } from '@/lib/constants';
-import { addDaysISO } from '@/lib/format';
-import { distinctCities, queryEvents, todayInToronto, upcomingCompanies } from '@/lib/events';
+import { distinctCities, hackathonPlanner, queryEvents, todayInToronto, upcomingCompanies } from '@/lib/events';
+import { getApplicant } from '@/lib/applicant';
 import { cn } from '@/lib/utils';
 
 export const dynamic = 'force-dynamic';
@@ -34,7 +36,7 @@ const LANE_TABS: { key: FeedLane; label: string; href: string }[] = [
 const LANE_META: Record<FeedLane, { title: string; subtitle: string }> = {
     all: { title: 'All events', subtitle: 'Everything we track across North America' },
     company: { title: 'Company events', subtitle: 'Official dev events from the companies we track' },
-    hackathon: { title: 'Hackathons', subtitle: 'MLH, Devpost & university hackathons over the next 6 months — apply while applications are open' },
+    hackathon: { title: 'Hackathons', subtitle: 'Grouped by when you have to apply — using the deadline that applies to you' },
     local: { title: 'Local events', subtitle: 'Community meetups & events from Luma, Eventbrite and Meetup' },
 };
 
@@ -48,37 +50,44 @@ const EventsPage = async ({ searchParams }: { searchParams: Promise<SearchParams
     const q = first(sp.q);
     const lane = laneFromParams(source, category);
 
-    // Hackathon lane defaults to a 6-month horizon grouped by month — you need
-    // to hear about a hackathon while applications are open, not the week it
-    // starts. Explicit from/to (preset chips) or a search override the default.
-    // The default is a FORWARD calendar: already-started online challenges are
-    // excluded (includeOngoing off) — dozens of them would clamp into the
-    // current month and bury the planning view. The "Upcoming" preset chip
-    // still surfaces them (category default keeps includeOngoing on there).
-    const horizonDefault = lane === 'hackathon' && !first(sp.from) && !first(sp.to) && !q;
+    // Hackathon lane default = the application planner (ADR-029): every
+    // upcoming hackathon grouped by when THIS viewer has to apply, not by when
+    // it runs — a November event closing applications today belongs at the
+    // top, not in the November bucket. It replaces the old 6-month
+    // event-date horizon. Explicit from/to (preset chips) or a search fall
+    // back to the date timeline. Already-started online challenges stay out of
+    // the planner (they'd crowd it); the "Upcoming" preset still shows them.
+    const plannerView = lane === 'hackathon' && !first(sp.from) && !first(sp.to) && !q;
     const monthGrouped = lane === 'hackathon' && !q;
+    const applicant = await getApplicant();
+    const shared = {
+        city: first(sp.city),
+        mode: first(sp.mode),
+        region,
+        price: first(sp.price),
+        applications: first(sp.applications),
+        travel: first(sp.travel),
+        tag: first(sp.tag),
+        applicant,
+    };
 
-    const [result, cities, companyRows] = await Promise.all([
-        queryEvents({
-            q,
-            city: first(sp.city),
-            mode: first(sp.mode),
-            category,
-            source,
-            organizer,
-            region,
-            price: first(sp.price),
-            applications: first(sp.applications),
-            travel: first(sp.travel),
-            from: first(sp.from),
-            to: horizonDefault ? addDaysISO(todayInToronto(), 183) : first(sp.to),
-            tag: first(sp.tag),
-            page: Number(first(sp.page)) || 1,
-            // Month-grouped horizon reads as a survey, not a feed — pull the full
-            // query cap per page so later months actually appear on page one.
-            limit: monthGrouped ? 60 : undefined,
-            includeOngoing: horizonDefault ? false : undefined,
-        }),
+    const [result, planner, cities, companyRows] = await Promise.all([
+        plannerView
+            ? null
+            : queryEvents({
+                  ...shared,
+                  q,
+                  category,
+                  source,
+                  organizer,
+                  from: first(sp.from),
+                  to: first(sp.to),
+                  page: Number(first(sp.page)) || 1,
+                  // Month-grouped ranges read as a survey, not a feed — pull the full
+                  // query cap per page so later months actually appear on page one.
+                  limit: monthGrouped ? 60 : undefined,
+              }),
+        plannerView ? hackathonPlanner(shared) : null,
         distinctCities(region),
         upcomingCompanies(),
     ]);
@@ -102,12 +111,19 @@ const EventsPage = async ({ searchParams }: { searchParams: Promise<SearchParams
             <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
                 <div className="flex flex-col gap-1.5">
                     <h1 className="text-4xl max-sm:text-3xl">{meta.title}</h1>
-                    <p className="text-light-200 text-sm">
-                        <span className="text-light-100 font-medium">{result.total}</span> upcoming event
-                        {result.total === 1 ? '' : 's'}
-                        {organizer ? ` from ${organizer}` : ''}
-                        {q ? ` for “${q}”` : ` · ${meta.subtitle}`}
-                    </p>
+                    {planner ? (
+                        <p className="text-light-200 text-sm">
+                            <span className="text-light-100 font-medium">{planner.open}</span> you can apply to now ·{' '}
+                            {planner.total} upcoming · {meta.subtitle}
+                        </p>
+                    ) : (
+                        <p className="text-light-200 text-sm">
+                            <span className="text-light-100 font-medium">{result!.total}</span> upcoming event
+                            {result!.total === 1 ? '' : 's'}
+                            {organizer ? ` from ${organizer}` : ''}
+                            {q ? ` for “${q}”` : ` · ${meta.subtitle}`}
+                        </p>
+                    )}
                 </div>
                 <SearchBox />
             </div>
@@ -127,7 +143,11 @@ const EventsPage = async ({ searchParams }: { searchParams: Promise<SearchParams
 
             {lane === 'company' && <CompanyDirectory counts={counts} active={organizer} />}
 
-            {result.items.length ? (
+            {lane === 'hackathon' && <ApplicantToggle applicant={applicant} />}
+
+            {planner ? (
+                planner.groups.length ? <HackathonPlanner groups={planner.groups} /> : <EmptyState />
+            ) : result && result.items.length ? (
                 <>
                     {q ? (
                         // Search results aren't date-ordered — a flat row list reads better than date rails.

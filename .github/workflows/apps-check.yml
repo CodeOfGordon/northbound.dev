@@ -1,0 +1,55 @@
+# Light application-state pass: every 6 hours, re-check hackathons whose hacker
+# applications are open, about to open, or closing within two weeks — landing
+# page + apply portal only, static fetch, no browser, hard 5-minute script
+# budget. Catches a closure within hours instead of the nightly cadence's days.
+# (ADR-029)
+#
+# Free: GitHub-hosted runners are free on this public repo, and the job touches
+# only free sources (the hackathons' own sites). Writes only
+# `enrichment.application` — same Atlas secret and write contract as the
+# nightly enrich job, and the two share a concurrency group so they never
+# write the same docs at once.
+name: Check hackathon applications
+
+on:
+  schedule:
+    - cron: '40 */6 * * *' # 00:40, 06:40, 12:40, 18:40 UTC — clear of the 07:15 nightly scrape
+  workflow_dispatch:
+
+concurrency:
+  group: hackathon-enrichment
+  cancel-in-progress: false
+
+jobs:
+  apps:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      MONGODB_URI: ${{ secrets.MONGODB_URI }}
+    steps:
+      - name: Check configuration
+        id: cfg
+        run: |
+          if [ -z "$MONGODB_URI" ]; then
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::MONGODB_URI repo secret is not set — skipping the application check."
+          else
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@v4
+        if: steps.cfg.outputs.configured == 'true'
+
+      - uses: actions/setup-node@v4
+        if: steps.cfg.outputs.configured == 'true'
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        if: steps.cfg.outputs.configured == 'true'
+        run: npm ci
+
+      - name: Re-check live hackathon applications
+        if: steps.cfg.outputs.configured == 'true'
+        run: node scripts/enrich-hackathons.mjs --apps-only

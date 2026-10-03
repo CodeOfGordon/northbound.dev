@@ -5,7 +5,7 @@ export { default as ScrapeMeta, DigestMeta } from './meta.model';
 export { default as Subscriber, newSubscriberToken, FREQUENCY_DAYS } from './subscriber.model';
 
 // TypeScript interfaces exports
-export type { IEvent, EventEnrichment } from './event.model';
+export type { IEvent, EventEnrichment, AppDeadline } from './event.model';
 export type { IBooking } from './booking.model';
 export type { IScrapeMeta, IDigestMeta } from './meta.model';
 export type { ISubscriber } from './subscriber.model';
