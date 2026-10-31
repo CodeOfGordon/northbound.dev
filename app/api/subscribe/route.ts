@@ -5,7 +5,7 @@ import { Subscriber, newSubscriberToken } from '@/database';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-const TOPICS = ['hackathon', 'company', 'community'];
+const TOPICS = ['hackathon', 'company', 'community', 'careers'];
 const REGIONS = ['CA', 'US', 'ONLINE'];
 const FREQUENCIES = ['daily', 'weekly', 'biweekly', 'monthly'];
 const COUNTRIES = ['CA', 'US', 'OTHER'];

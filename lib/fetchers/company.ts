@@ -10,6 +10,7 @@ import { getJSON } from './util';
 import { COMPANY_SOURCES, type CompanySource } from './config';
 import { fetchLumaEntries } from './luma';
 import { fetchGoogle } from './companies/google';
+import { fetchGoogleCareers } from './companies/googleCareers';
 import { fetchAws } from './companies/aws';
 import { fetchReactor } from './companies/reactor';
 import { fetchYc } from './companies/yc';
@@ -41,6 +42,7 @@ const PROVIDERS: Record<CompanySource['provider'], Provider> = {
 
     // Bespoke platform adapters — all emit CompanyStdEvent (see companies/shared.ts)
     google: fetchGoogle,
+    'google-careers': fetchGoogleCareers,
     aws: fetchAws,
     reactor: fetchReactor,
     yc: fetchYc,

@@ -11,6 +11,8 @@ export interface InterestRule {
     /** Any-of categories (used where one topic spans several). */
     categories?: string[];
     source?: string;
+    /** Case-insensitive exact organizer match (e.g. 'Google Careers'). */
+    organizer?: string;
     region?: 'CA' | 'US' | 'ONLINE';
     /** Case-insensitive exact city match. */
     city?: string;
@@ -42,6 +44,7 @@ export interface EventLike {
     city: string;
     tags: string[];
     source: string;
+    organizer?: string;
     category?: string;
     region?: string;
     mode?: string;
@@ -63,6 +66,7 @@ export function matchEvent(event: EventLike, rules: InterestRule[], ctx: MatchCo
             if (rule.category && event.category !== rule.category) return false;
             if (rule.categories && !rule.categories.includes(event.category ?? '')) return false;
             if (rule.source && event.source !== rule.source) return false;
+            if (rule.organizer && event.organizer?.toLowerCase() !== rule.organizer.toLowerCase()) return false;
             if (rule.region && event.region !== rule.region) return false;
             if (rule.city && event.city.toLowerCase() !== rule.city.toLowerCase()) return false;
             if (rule.tags && !rule.tags.some((t) => tags.includes(t.toLowerCase()))) return false;
@@ -94,6 +98,11 @@ const COMMUNITY_CATEGORIES = ['meetup', 'conference', 'networking'];
  */
 export function rulesForSubscriber(prefs: SubscriberPrefs): InterestRule[] {
     const rules: InterestRule[] = [];
+
+    // Careers sessions are online-only, so this topic ignores the region picks.
+    if (prefs.topics.includes('careers')) {
+        rules.push({ label: 'Google Careers OnAir', organizer: 'Google Careers' });
+    }
 
     for (const region of prefs.regions as ('CA' | 'US' | 'ONLINE')[]) {
         const where = REGION_LABEL[region] ?? region;

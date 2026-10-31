@@ -25,6 +25,7 @@ interface Props {
 const TOPICS: { value: string; label: string; hint: string }[] = [
     { value: 'hackathon', label: 'Hackathons', hint: 'MLH, Devpost & university hackathons — with application status' },
     { value: 'company', label: 'Company events', hint: 'Official dev events from Google, AWS, Vercel, and others' },
+    { value: 'careers', label: 'Google Careers OnAir', hint: 'Live online sessions on interviews and internships — attend signed in to your Google account' },
     { value: 'community', label: 'Meetups & conferences', hint: 'Local community events, conferences, networking' },
 ];
 

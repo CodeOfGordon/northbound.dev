@@ -41,3 +41,10 @@ test('US travel-only scoping still requires a confirmed travel policy', () => {
     assert.deepEqual(matchEvent(hack({ enrichment: { travel: { status: 'yes' } } }), rules), ['Hackathons · United States (travel covered)']);
     assert.deepEqual(matchEvent(hack({ region: 'CA', city: 'Toronto' }), rules), ['Hackathons · Canada']);
 });
+
+test('careers topic matches Google Careers events regardless of region picks', () => {
+    const rules = rulesForSubscriber({ topics: ['careers'], regions: ['CA'], usTravelOnly: false });
+    const careers = hack({ source: 'company', category: undefined, organizer: 'Google Careers', region: 'ONLINE', mode: 'online' });
+    assert.deepEqual(matchEvent(careers, rules), ['Google Careers OnAir']);
+    assert.deepEqual(matchEvent({ ...careers, organizer: 'Google' }, rules), []);
+});

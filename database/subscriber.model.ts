@@ -14,7 +14,7 @@ export interface ISubscriber extends Document {
     token: string;
     status: 'active' | 'unsubscribed';
     /** What they want to hear about. */
-    topics: ('hackathon' | 'company' | 'community')[];
+    topics: ('hackathon' | 'company' | 'community' | 'careers')[];
     /** Where. ONLINE = joinable from anywhere. */
     regions: ('CA' | 'US' | 'ONLINE')[];
     /** US in-person hackathons only when travel reimbursement is known-offered. */
@@ -79,7 +79,7 @@ const SubscriberSchema = new Schema<ISubscriber>(
         status: { type: String, enum: ['active', 'unsubscribed'], default: 'active' },
         topics: {
             type: [String],
-            enum: ['hackathon', 'company', 'community'],
+            enum: ['hackathon', 'company', 'community', 'careers'],
             default: ['hackathon'],
             validate: { validator: (v: string[]) => v.length > 0, message: 'Pick at least one topic' },
         },

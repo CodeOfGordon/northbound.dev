@@ -112,7 +112,7 @@ export type CompanySource = CompanyMeta &
     (
         | { provider: 'luma'; slug?: string; calendarApiId?: string }
         | { provider: 'tribe'; base: string; city: string }
-        | { provider: 'google' | 'aws' | 'reactor' | 'nvidia' | 'databricks' | 'snowflake' | 'figma' }
+        | { provider: 'google' | 'google-careers' | 'aws' | 'reactor' | 'nvidia' | 'databricks' | 'snowflake' | 'figma' }
         | { provider: 'yc'; slugs: string[] }
         | { provider: 'tesla'; locale: string; centroids: { city: string; lat: number; lng: number }[] }
     );
@@ -120,6 +120,7 @@ export type CompanySource = CompanyMeta &
 export const COMPANY_SOURCES: CompanySource[] = [
     // Bespoke platform feeds (big tech / official dev-event hubs)
     { provider: 'google', company: 'Google', industry: 'Big Tech' },
+    { provider: 'google-careers', company: 'Google Careers', industry: 'Big Tech' },
     { provider: 'aws', company: 'AWS', industry: 'Cloud & Infra' },
     { provider: 'reactor', company: 'Microsoft Reactor', industry: 'Big Tech' },
     { provider: 'yc', company: 'Y Combinator', industry: 'Startups & VC', slugs: ['startup-school-2026'] },
