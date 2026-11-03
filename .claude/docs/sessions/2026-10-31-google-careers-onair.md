@@ -91,5 +91,7 @@ closed) having a good stipend, and about TreeHacks. Findings:
   session's permission classifier (it would route around the egress policy). It was never
   committed. Live verification is left to the first nightly scrape after deploy, or a
   session with network access.
-- Not merged to `main` and owner not yet subscribed: both wait on gordon (deploy decision;
-  subscription needs the deployed `careers` topic and DB/site access this sandbox lacks).
+- Shipped: gordon approved; `main` fast-forwarded to `60befb4` on 2026-11-03 (Vercel deploys
+  from `main`). First real fetch is the next nightly `company` scrape (07:15 UTC).
+- Owner subscription still open: this sandbox can't reach the site or Atlas. gordon ticks
+  "Google Careers OnAir" at `/subscribe` (or an approved session with access does it).
