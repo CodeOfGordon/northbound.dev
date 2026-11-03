@@ -673,6 +673,61 @@ showing "open" after its Sep 20 close. Traced causes:
 
 ---
 
+## ADR-030 — An "open" seen after a passed deadline beats the date; flag every event with nothing left to remind (2026-11-03)
+**Status**: Accepted · 2026-11-03 (refines ADR-029)
+
+**Context**: HackUTD 2026 (Nov 7–8) closed hacker applications Oct 30, and gordon got no
+notification.
+- **What the site said:** zeroday.hackutd.co only ever published "Priority deadline
+  October 3, 2026" and kept saying "Registration is open". The regular close (Oct 24 per
+  a sponsor post and LinkedIn, then Oct 30) appeared only off-site.
+- **What we stored:** the classifier read "Apply by October 3rd to be considered in our
+  first round of decisions" as a REGULAR tier, because the tier words came after the
+  date. With a hard close of Oct 3, the resolver showed "Apps closed" from Oct 4 and
+  suppressed every reminder. This held even though the 6-hourly pass kept recording
+  fresh "open" observations, the last on 2026-11-02 06:49Z.
+- **Why no flag fired:** the risk flag required zero known deadlines, and a (passed)
+  priority date existed.
+
+**Decisions**:
+- **Trailing tier qualifiers.** `scripts/lib/classify-application.mjs` now reads narrow
+  phrases that follow the date in the same sentence: "to be considered in our first
+  round", "for priority consideration", "considered for travel reimbursement", "final
+  round".
+- **Open after the hard close.** In `applicationState()`, an "open" observation newer than
+  the hard close (and newer than any "closed") keeps the event **open**, with
+  `pastDeadline: true` and a check-the-site note. It is not closed. A newer "closed"
+  observation still wins.
+- **Risk flag widened.** It now fires for an in-person major ≤ 12 weeks out whenever **no
+  future applicable deadline** is known: no deadline at all, only a passed priority
+  round, or a past-deadline-but-open event. `riskNote()` words each case, and the digest
+  sends it once per event in "Deadline not published — check these".
+- **Cron slack.** The nightly cadence check has 4 h of slack: a "24 h" recheck skipped
+  hosts every other night whenever the cron fired a few minutes earlier than the day
+  before.
+- **CI runner.** The `enrich` job is pinned to `ubuntu-24.04`, and its Chromium install
+  is `continue-on-error`. `ubuntu-latest` became 26.04 on 2026-10-31, Playwright 1.60's
+  `install --with-deps chromium` refuses it, and the job had failed 4 nights running.
+
+**Rationale**: Hiding an application that is still open is the costliest error this
+product can make. A site that says "registration is open" after the only date we know is
+far more likely extended or misread than wrong. No source we can read published HackUTD's
+regular close, so the honest output is a dated "check now", not silence.
+
+**Consequences**:
+- Existing prod rows (HackUTD stored a bogus regular Oct 3) now resolve correctly at read
+  time, and the next enrichment re-parses them.
+- A site that leaves stale "applications are open" copy up after closing now shows
+  "Apps open · deadline unlisted" with a check-the-site note instead of "closed", until a
+  closed observation (e.g. from the portal) arrives.
+- Verified by a digest replay on a local mongod with HackUTD's stored record as of
+  2026-10-10. The Canadian subscriber's digest now carries the check-the-site item, where
+  before it said nothing.
+- Not addressed: the two HackUTD docs (dates Nov 6 and Nov 7, both from MLH) are the known
+  fingerprint-dedup gap when a source shifts an event's date.
+
+---
+
 ## Known follow-ups / tech debt
 - ~~`database/mongodb.ts` stray `v8` import~~ — already removed.
 - ~~`normalizeDate()` UTC day-shift~~ — **fixed 2026-06-10**: `normalizeDate`/`normalizeTime` extract wall-clock parts in the event's IANA timezone (`Intl.DateTimeFormat`); `event.model.ts` reuses the same helpers.

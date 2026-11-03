@@ -248,6 +248,26 @@ function tierOf(snippet) {
     return null;
 }
 
+/**
+ * Tier qualifiers that FOLLOW the date in the same sentence. HackUTD 2026:
+ * "Apply by October 3rd to be considered in our first round of decisions" —
+ * read from the leading words alone it looked like the regular close, which
+ * made the event look closed four weeks before applications actually closed.
+ * Deliberately narrow phrases only: a stray tier word later in the sentence
+ * must not relabel a deadline.
+ */
+const TRAILING_TIER_RES = [
+    ['priority', /^[^.!?]{0,60}?\b(?:to\s+be\s+considered\s+(?:in|for)\s+(?:our\s+|the\s+)?)?(?:first|early|priority)[\s-]+(?:round|decisions?|consideration|review|admissions?)\b/i],
+    ['priority', /^[^.!?]{0,60}?\bfor\s+(?:priority|early)\s+(?:consideration|review|decisions?|admission)\b/i],
+    ['travel', /^[^.!?]{0,60}?\b(?:to\s+be\s+)?considered\s+for\s+(?:travel|reimbursement|a\s+travel)\b/i],
+    ['regular', /^[^.!?]{0,60}?\b(?:final|second)[\s-]+(?:round|deadline)\b/i],
+];
+
+function trailingTier(after) {
+    for (const [kind, re] of TRAILING_TIER_RES) if (re.test(after)) return kind;
+    return null;
+}
+
 /** The tier word closest to the END of `snippet` (i.e. nearest the date that follows it). */
 function nearestTier(snippet) {
     let best = null;
@@ -396,7 +416,10 @@ export function extractDeadlines(text, anchorDate) {
         // Tier: a trailing "(priority)" beats the nearest leading tier word.
         const paren = tail.match(/^[^()/]{0,30}?\(\s*([^)]{1,30})\)/)?.[1] ?? '';
         const nearBefore = text.slice(Math.max(clause.start, segmentStart, idx - 60), idx);
-        const kind = tierOf(paren) ?? nearestTier(nearBefore) ?? 'regular';
+        const after = text.slice(idx + m[0].length, Math.min(clause.end, idx + m[0].length + 100));
+        // Tier: a trailing "(priority)" beats a trailing qualifier ("…to be
+        // considered in our first round"), which beats the nearest leading word.
+        const kind = tierOf(paren) ?? trailingTier(after) ?? nearestTier(nearBefore) ?? 'regular';
         const extension = /\b(?:extended|extension)\b/i.test(nearBefore);
         const restricted = RESTRICTED_RE.test(clause.text) && kind === 'priority';
 

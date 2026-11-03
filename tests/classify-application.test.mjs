@@ -44,6 +44,20 @@ test('early vs regular rounds with weekday prefixes (MHacks 2026)', () => {
     ]);
 });
 
+test('HackUTD 2026: a tier qualifier AFTER the date ("first round of decisions") is a priority tier, not the regular close', () => {
+    const t = pageText('<p>Priority deadline October 3, 2026</p><h2>Registration is open</h2><p>Priority deadline · October 3, 2026</p><p>Apply by October 3rd to be considered in our first round of decisions.</p>');
+    assert.deepEqual(extractDeadlines(t, '2026-11-07').map((d) => [d.kind, d.date]), [['priority', '2026-10-03']]);
+    assert.equal(classifyApplication(t, '2026-11-07').status, 'open');
+});
+
+test('trailing qualifiers: travel consideration and priority consideration', () => {
+    assert.deepEqual(
+        extractDeadlines('Apply by Aug 12 to be considered for travel reimbursement. Regular applications close Sep 10.', '2026-09-25').map((d) => [d.kind, d.date]),
+        [['travel', '2026-08-12'], ['regular', '2026-09-10']],
+    );
+    assert.equal(extractDeadlines('Submit your application by Sept 15 for priority consideration.', '2026-10-30')[0].kind, 'priority');
+});
+
 test('nearest tier word wins when two tiers share a sentence', () => {
     const ds = extractDeadlines('Priority deadline is Sep 13 and the regular deadline is Sep 20.', '2026-10-23');
     assert.deepEqual(ds.map((d) => [d.kind, d.date]), [['priority', '2026-09-13'], ['regular', '2026-09-20']]);

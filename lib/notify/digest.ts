@@ -31,7 +31,7 @@ import { toEventDoc, todayInToronto, type EventDoc } from '@/lib/events';
 import {
     APPLICANT_COUNTRY_LABEL,
     KIND_LABEL,
-    RISK_NOTE,
+    riskNote,
     applicationState,
     dueWhen,
     isApplicable,
@@ -293,7 +293,7 @@ export async function runDigest(opts: DigestOptions = {}): Promise<DigestResult>
         const riskIds: string[] = [];
         for (const h of resolved) {
             if (h.state.risk !== 'deadline-unpublished' || notifiedRisk.has(h.id)) continue;
-            risks.push(toItem(h.doc, { note: RISK_NOTE }));
+            risks.push(toItem(h.doc, { note: riskNote(h.state) }));
             riskIds.push(h.id);
         }
 

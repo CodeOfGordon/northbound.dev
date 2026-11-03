@@ -99,6 +99,8 @@ const SLEEP_BETWEEN_MS = 1_500;
 const HORIZON_DAYS = 365;
 /** --apps-only re-checks a live host once this many hours have passed. */
 const APPS_ONLY_RECHECK_HOURS = 5;
+/** Scheduled runs drift by hours; a cadence of N h means "the next run after N − 4 h". */
+const CRON_SLACK_HOURS = 4;
 
 /** Conventional FAQ/travel paths probed when the linked pages say nothing about travel. */
 const TRAVEL_PROBE_PATHS = ['/faq', '/faqs', '/travel', '/about'];
@@ -150,7 +152,10 @@ function isStale(doc, today) {
     // with a deadline this week is checked daily, a closed one weekly.
     const ageHours = (Date.now() - Date.parse(e.checkedAt)) / 3_600_000;
     if (Number.isNaN(ageHours)) return true;
-    return ageHours >= recheckHours(e, today);
+    // The nightly cron fires at a different minute each day (GitHub queues
+    // it), so "24 h" read literally skipped hosts every other night when a run
+    // started a few minutes earlier than the last one. Allow 4 h of slack.
+    return ageHours >= recheckHours(e, today) - CRON_SLACK_HOURS;
 }
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));

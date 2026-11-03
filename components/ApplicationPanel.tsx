@@ -3,7 +3,7 @@ import AddDeadlineToCalendar from '@/components/AddDeadlineToCalendar';
 import ApplicantToggle from '@/components/ApplicantToggle';
 import {
     KIND_LABEL,
-    RISK_NOTE,
+    riskNote,
     dueLabel,
     dueWhen,
     staleNote,
@@ -112,7 +112,7 @@ const ApplicationPanel = ({ event, applicant }: Props) => {
                 </p>
             )}
             {stale && <p className="text-light-200 pl-8 text-xs">{stale}</p>}
-            {s.risk && <p className="text-light-200 pl-8 text-xs">{RISK_NOTE}</p>}
+            {s.risk && <p className="text-light-200 pl-8 text-xs">{riskNote(s)}</p>}
             {evidence && <p className="text-light-200 line-clamp-3 pl-8 text-xs">“{evidence}”</p>}
 
             <p className="label pl-8 normal-case">

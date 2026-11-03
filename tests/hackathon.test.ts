@@ -14,6 +14,7 @@ import {
     dueLabel,
     dueWhen,
     parseApplicant,
+    riskNote,
     zonedInstant,
     type Applicant,
 } from '@/lib/hackathon';
@@ -65,11 +66,69 @@ const CAL_HACKS: AppDeadline[] = [
     { kind: 'regular', date: '2026-09-20', audience: 'all', source: 'curated' },
 ];
 
-test('Cal Hacks: closed the day after the regular deadline, even with a lingering "open" observation', () => {
-    const e = withDeadlines(CAL_HACKS, { status: 'open', openSeenAt: '2026-09-21T10:00:00.000Z' });
+test('Cal Hacks: closed the day after the regular deadline when nothing has said "open" since', () => {
+    const e = withDeadlines(CAL_HACKS, { status: 'open', openSeenAt: '2026-09-19T10:00:00.000Z' });
     const s = applicationState(e, CA, new Date('2026-09-21T16:00:00Z'));
     assert.equal(s.status, 'closed');
     assert.equal(applicationBadge(s)?.text, 'Apps closed');
+});
+
+test('Cal Hacks: a newer "closed" from the portal beats an "open" seen after the deadline', () => {
+    const e = withDeadlines(CAL_HACKS, {
+        status: 'closed',
+        openSeenAt: '2026-09-21T08:00:00.000Z',
+        closedSeenAt: '2026-09-21T14:00:00.000Z',
+    });
+    assert.equal(applicationState(e, CA, new Date('2026-09-21T16:00:00Z')).status, 'closed');
+});
+
+// HackUTD 2026 (event Nov 7–8): the site published only "Priority deadline
+// October 3, 2026" and kept saying "Registration is open"; the regular close
+// (Oct 24, later Oct 30) was only announced off-site.
+const HACKUTD = { date: '2026-11-07', city: 'Richardson', timezone: 'America/Chicago', source: 'mlh' as const };
+const HACKUTD_TRAVEL = { status: 'yes' as const };
+
+test('HackUTD as stored: a misread "regular Oct 3" no longer hides a site that still says open', () => {
+    const e = withDeadlines(
+        [
+            { kind: 'priority', date: '2026-10-03', audience: 'all', source: 'site' },
+            { kind: 'regular', date: '2026-10-03', audience: 'all', source: 'site', evidence: 'Apply by October 3rd to be considered in our first round of decisions.' },
+        ],
+        { status: 'open', openSeenAt: '2026-10-20T12:00:00.000Z' },
+        HACKUTD,
+    );
+    e.enrichment!.travel = HACKUTD_TRAVEL;
+    const s = applicationState(e, CA, new Date('2026-10-20T16:00:00Z'));
+    assert.equal(s.status, 'open');
+    assert.equal(s.pastDeadline, true);
+    assert.equal(s.risk, 'deadline-unpublished');
+    assert.match(riskNote(s), /Oct 3\) has passed, but the site still says applications are open/);
+    assert.deepEqual(applicationBadge(s), { text: 'Apps open', sub: 'deadline unlisted', tone: 'primary' });
+});
+
+test('HackUTD as now parsed: priority passed, no regular published → open, check-the-site flag', () => {
+    const e = withDeadlines([{ kind: 'priority', date: '2026-10-03', audience: 'all', source: 'site' }], { status: 'open', openSeenAt: '2026-10-20T12:00:00.000Z' }, HACKUTD);
+    e.enrichment!.travel = HACKUTD_TRAVEL;
+    const s = applicationState(e, CA, new Date('2026-10-20T16:00:00Z'));
+    assert.equal(s.status, 'open');
+    assert.equal(s.actBy, undefined);
+    assert.equal(s.risk, 'deadline-unpublished');
+    assert.match(riskNote(s), /priority deadline \(Oct 3\) has passed and the regular deadline isn't published/);
+    // Before Oct 3 the priority round was the act-by date and nothing was flagged.
+    const sept = applicationState(e, CA, new Date('2026-09-25T16:00:00Z'));
+    assert.equal(sept.actBy?.kind, 'priority');
+    assert.equal(sept.risk, undefined);
+});
+
+test('HackUTD after it actually closed: the newer "closed" observation wins', () => {
+    const e = withDeadlines([{ kind: 'priority', date: '2026-10-03', audience: 'all', source: 'site' }], {
+        status: 'closed',
+        openSeenAt: '2026-11-02T06:49:00.000Z',
+        closedSeenAt: '2026-11-02T21:56:00.000Z',
+    }, HACKUTD);
+    const s = applicationState(e, CA, new Date('2026-11-03T16:00:00Z'));
+    assert.equal(s.status, 'closed');
+    assert.equal(s.risk, undefined);
 });
 
 test('applicant travelling in from abroad: the priority tier is the act-by date', () => {

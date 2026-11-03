@@ -19,7 +19,10 @@ export async function resolve(specifier, context, next) {
         const hit = probe(path.join(ROOT, specifier.slice(2)));
         if (hit) return { url: hit, shortCircuit: true };
     }
-    if ((specifier.startsWith('./') || specifier.startsWith('../')) && context.parentURL?.startsWith('file:') && !path.extname(specifier)) {
+    // Extensionless relative imports — including dotted names like './event.model'
+    // whose "extension" is part of the module name, not a file type.
+    const known = ['.ts', '.tsx', '.mts', '.mjs', '.js', '.cjs', '.json'];
+    if ((specifier.startsWith('./') || specifier.startsWith('../')) && context.parentURL?.startsWith('file:') && !known.includes(path.extname(specifier))) {
         const hit = probe(path.resolve(path.dirname(fileURLToPath(context.parentURL)), specifier));
         if (hit) return { url: hit, shortCircuit: true };
     }
