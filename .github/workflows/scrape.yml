@@ -96,7 +96,11 @@ jobs:
   # secret; soft-skips when unset. `if: always()` — a partial scrape failure must
   # not starve enrichment of the sources that did land. (ADR-020)
   enrich:
-    runs-on: ubuntu-latest
+    # Pinned: ubuntu-latest moved to 26.04 on 2026-10-31 and
+    # `playwright install --with-deps chromium` (playwright 1.60) refuses it —
+    # the job went red four nights running and enrichment stopped. Unpin once
+    # Playwright supports the new image.
+    runs-on: ubuntu-24.04
     needs: scrape
     if: always()
     # Shared with the 6-hourly application check (apps-check.yml) so the two
@@ -140,6 +144,9 @@ jobs:
       # static-only with a warning rather than failing. (ADR-027)
       - name: Install Chromium for JS rendering
         if: steps.cfg.outputs.configured == 'true'
+        # Never fatal: without a browser the script degrades to static fetches
+        # with a warning (ADR-027) — a failed install must not stop enrichment.
+        continue-on-error: true
         run: npx playwright install --with-deps chromium
 
       - name: Enrich hackathon events

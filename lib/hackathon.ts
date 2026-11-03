@@ -146,8 +146,14 @@ export interface ApplicationState {
     rolling: boolean;
     /** The applicant is applying from another country than the event's. */
     abroad: boolean;
-    /** F6: an in-person major close to its start with no deadline published anywhere we read. */
+    /** F6: an in-person major close to its start with no FUTURE deadline anywhere we read. */
     risk?: 'deadline-unpublished';
+    /**
+     * The latest deadline we know has passed, but the site said applications
+     * are open AFTER it — the date was extended or misread. Shown as open with
+     * a check-the-site note rather than silently closed. (HackUTD 2026.)
+     */
+    pastDeadline?: boolean;
 }
 
 /** Observations newer than this back an "open" claim on their own (P3). */
@@ -302,8 +308,14 @@ export function applicationState(e: EventDoc, who: Applicant = DEFAULT_APPLICANT
     );
     const notYet = scrape === 'not_yet' || (!scrape || scrape === 'unknown' ? app?.status === 'not_yet' : false);
 
+    // A stated "applications are open" seen AFTER the hard close outranks the
+    // date (it was extended or we misread it) — unless something newer says
+    // closed. Hiding a still-open application is the costlier mistake.
+    const openAfterHard =
+        hardPassed && !!openSeenAt && openSeenAt > hardDeadline!.closesAt && (!closedSeenAt || openSeenAt > closedSeenAt);
+
     let status: ApplicationState['status'];
-    if (hardPassed) status = 'closed';
+    if (hardPassed && !openAfterHard) status = 'closed';
     else if (closedSeenAt && (!openSeenAt || closedSeenAt > openSeenAt)) status = 'closed';
     else if (notYet && !openSeenAt) status = 'not_yet';
     else if (openSeenAt || upcoming.length) status = 'open';
@@ -314,11 +326,15 @@ export function applicationState(e: EventDoc, who: Applicant = DEFAULT_APPLICANT
     const confidence: ApplicationState['confidence'] =
         actBy ? 'deadline' : openSeenAt && now.getTime() - Date.parse(openSeenAt) <= VERIFIED_WINDOW_MS ? 'verified' : 'stale';
 
+    // Risk: nothing still ahead to remind about — no deadline at all, only a
+    // passed priority round, or a passed date the site contradicts. HackUTD
+    // 2026 published only its priority date; the regular close lived on
+    // social posts, and this flag is what should have said "check now".
     let risk: ApplicationState['risk'];
     const today = dayIn(tz, now);
     if (
         (status === 'open' || status === 'unknown') &&
-        all.filter((d) => d.audience !== 'restricted').length === 0 &&
+        upcoming.length === 0 &&
         e.mode !== 'online' &&
         country !== null &&
         e.date >= today &&
@@ -343,6 +359,7 @@ export function applicationState(e: EventDoc, who: Applicant = DEFAULT_APPLICANT
         rolling: !!app?.rolling,
         abroad,
         risk,
+        pastDeadline: openAfterHard || undefined,
     };
 }
 
@@ -404,6 +421,11 @@ export function applicationBadge(s: ApplicationState): { text: string; sub?: str
         case 'closing_soon':
             return { text: s.actBy ? dueLabel(s.actBy) : 'Closing soon', tone: 'strong' };
         case 'open':
+            if (s.risk) {
+                return s.confidence === 'stale'
+                    ? { text: 'Apps open?', sub: 'deadline unlisted', tone: 'muted' }
+                    : { text: 'Apps open', sub: 'deadline unlisted', tone: 'primary' };
+            }
             if (s.confidence === 'stale') {
                 return { text: 'Apps open?', sub: s.verifiedAt ? `as of ${shortDate(s.verifiedAt.slice(0, 10))}` : undefined, tone: 'muted' };
             }
@@ -445,6 +467,19 @@ export function staleNote(s: ApplicationState): string | undefined {
 
 export const RISK_NOTE =
     'Deadline not published where we can read it. Majors like this usually close 5–11 weeks before the event — check now.';
+
+/** The check-the-site note, worded for why no future deadline is known. */
+export function riskNote(s: ApplicationState): string {
+    const lastPassed = s.passed[s.passed.length - 1];
+    if (s.pastDeadline && lastPassed) {
+        return `The deadline we found (${shortDate(lastPassed.date)}) has passed, but the site still says applications are open — it was probably extended. Check the site now.`;
+    }
+    const priority = s.passed.find((d) => d.kind === 'priority');
+    if (priority) {
+        return `The priority deadline (${shortDate(priority.date)}) has passed and the regular deadline isn't published where we can read it — applications may still be open. Check the site now.`;
+    }
+    return RISK_NOTE;
+}
 
 /* ---- Travel ----------------------------------------------------------------- */
 

@@ -349,3 +349,14 @@ export default async function Page({ searchParams }: { searchParams: Promise<Rec
   Node 22's `zlib.zstdDecompressSync`). FerretDB 1.x lacks `$cond`, which the feed's
   ongoing-events aggregate uses. Next 16 dev blocks `/_next/*` dev resources for
   non-`localhost` origins, so browse `localhost`, not `127.0.0.1`, or React never hydrates.
+- **Tier words can follow the date.** "Apply by October 3rd to be considered in our
+  first round of decisions" is a priority tier. Read the trailing qualifier before
+  defaulting to `regular` (HackUTD 2026, ADR-030).
+- **A passed date is not proof of closed.** If the site says "registration is open" after
+  the only deadline we know, the deadline was extended or misread. Keep the event open
+  and flag it.
+- **`ubuntu-latest` moves.** It became Ubuntu 26.04 on 2026-10-31, and Playwright 1.60's
+  `install --with-deps chromium` refuses it. The enrich job is pinned to `ubuntu-24.04`.
+- **Node's native ESM loader can't import mongoose's named exports** (`models`) from the
+  app's TS files. For one-off scripts that import app modules, use `tsx` from a scratch
+  dir with `NODE_OPTIONS=--conditions=react-server` (for `server-only`).
