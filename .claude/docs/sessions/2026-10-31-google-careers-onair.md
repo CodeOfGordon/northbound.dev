@@ -76,3 +76,20 @@ closed) having a good stipend, and about TreeHacks. Findings:
 - The digest already has a verified-only travel-reimbursement flag
   (`enrichment.travel.status`) and a US travel-only filter. Not yet checked whether
   either event is in the DB.
+
+## Update 2026-11-03
+
+- Branch synced with `main` (merge of `20b56b3`). Gates on the branch: `npx tsc --noEmit`
+  exit 0, `npm run lint` exit 0 (repo-wide, clean), `npm run build` green, `npm test`
+  52/52. Fixed one lint error introduced in `tests/googleCareers.test.ts` (`as any`).
+- Careers OnAir FUTURE list still empty on 2026-11-03 (`total_events: 0`).
+- Other big tech checked for recruiting-event feeds. None verifiable (details in
+  ADR-031): Microsoft (past recordings only), Amazon (Brazen links via career centres),
+  Meta (one-off Splash pages), NVIDIA (Eightfold-backed calendar; data file not found).
+- Recorded ADR-031 in `.claude/docs/decisions.md`.
+- A temporary GitHub Actions probe to reach hosts the sandbox blocks was rejected by the
+  session's permission classifier (it would route around the egress policy). It was never
+  committed. Live verification is left to the first nightly scrape after deploy, or a
+  session with network access.
+- Not merged to `main` and owner not yet subscribed: both wait on gordon (deploy decision;
+  subscription needs the deployed `careers` topic and DB/site access this sandbox lacks).

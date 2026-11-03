@@ -728,6 +728,55 @@ regular close, so the honest output is a dated "check now", not silence.
 
 ---
 
+## ADR-031 — Google Careers OnAir as a company source + a "careers" digest topic (2026-11-03)
+**Status**: Accepted · 2026-11-03
+
+**Context**: gordon asked for big-tech recruiting events (interview prep, info sessions),
+prompted by a reel claiming that live Careers OnAir attendance led Google to open an
+internship application for the attendee (unverified). The Google adapter only read
+developers.google.com/events, so recruiting sessions were never scraped.
+- **Google:** careersonair.withgoogle.com runs on Google's "Gather" platform (same as
+  Cloud OnAir) with a public JSON listing, `GET /api/events?state=FUTURE|LIVE|PAST&page=N`.
+- **Other big tech, checked 2026-11-03:** none has a public, dated, machine-readable feed
+  we could verify. Microsoft's "virtual events" page lists only past recordings. Amazon
+  sends sessions out as Brazen links through university career centres. Meta uses
+  one-off Splash pages on events.atmeta.com (root 403). NVIDIA has a University
+  Recruiting Event Calendar backed by Eightfold events, but its data file is loaded
+  client-side and was not found.
+
+**Decisions**:
+- **New bespoke provider `google-careers`** (`lib/fetchers/companies/googleCareers.ts`),
+  registry entry `Google Careers` (Big Tech). It reads FUTURE + LIVE (≤ 3 pages each) and
+  keeps public, published, English, **online-only** sessions whose end is still ahead.
+  LIVE carries evergreen "hub" events with years-old end dates, hence the re-filter.
+  In-person/hybrid sessions are dropped because they sit in overseas offices.
+- **Digest topic `careers`** ("Google Careers OnAir"): one rule on
+  `organizer = 'Google Careers'`, independent of the subscriber's region picks, because
+  the sessions are online. `InterestRule` gains an `organizer` field; the subscriber
+  `topics` enum and the `/api/subscribe` allowlist gain `careers`.
+
+**Rationale**: It is the only recruiting-event source with a stable public API. It rides
+the existing free nightly `company` source, so there is no new schedule and no spend. One
+organizer-keyed topic lets a verified NVIDIA (or other) recruiting source join later by
+adding its organizer to the rule.
+
+**Consequences**:
+- Additive only. There is no schema change to events. Existing subscribers are untouched
+  because `careers` is opt-in.
+- The FUTURE list was empty on 2026-10-31 and 2026-11-03, so the source writes nothing
+  until Google posts sessions. Expect gaps between recruiting campaigns.
+- Not live-verified end-to-end: the dev sandbox's egress policy blocks the host. The
+  event shape was read from PAST/LIVE responses via a web-fetch tool and pinned in
+  `tests/googleCareers.test.ts`. The first nightly `company` run after deploy is the first
+  real fetch; a failure degrades to a `console.warn` (per-company isolation).
+- Our digest only announces sessions. Registering and attending signed in to a Google
+  account happens on Google's site.
+- Follow-up: NVIDIA recruiting calendar. Find its data file with browser devtools on
+  nvidia.com/en-us/about-nvidia/careers/university-recruiting/events-calendar/, then add
+  it as a second organizer under `careers`.
+
+---
+
 ## Known follow-ups / tech debt
 - ~~`database/mongodb.ts` stray `v8` import~~ — already removed.
 - ~~`normalizeDate()` UTC day-shift~~ — **fixed 2026-06-10**: `normalizeDate`/`normalizeTime` extract wall-clock parts in the event's IANA timezone (`Intl.DateTimeFormat`); `event.model.ts` reuses the same helpers.

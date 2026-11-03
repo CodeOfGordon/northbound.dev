@@ -30,7 +30,7 @@ test('keeps only public, English, online, upcoming sessions and normalizes them'
     assert.deepEqual(raw.map((e) => e.id), ['a1']);
     assert.equal(raw[0].url, 'https://careersonair.withgoogle.com/events/ptg-genswe');
 
-    const doc = normalizeRawEvent(raw[0], 'company') as any;
+    const doc = normalizeRawEvent(raw[0], 'company') as unknown as Record<string, string>;
     assert.equal(doc.organizer, 'Google Careers');
     assert.equal(doc.mode, 'online');
     assert.equal(doc.region, 'ONLINE');
